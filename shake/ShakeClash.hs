@@ -70,14 +70,6 @@ mainFor ClashProject{..} = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
                     (Nothing, Nothing) -> error "XILINX_ROOT or XILINX must be set"
             cmd_ (Cwd buildDir) exe args
 
-    phony "clean" $ do
-        putNormal $ "Cleaning files in " ++ buildDir
-        removeFilesAfter buildDir [ "//*" ]
-
-    phony "clashi" $ do
-        let src = "src-clash" </> clashModule <.> "hs" -- TODO
-        clash "clashi" [src]
-
     let manifest = buildDir </> "vhdl" </> clashModule </> clashTopName </> clashTopName <.> "manifest"
     let manifestSrcs = do
             need [manifest]
@@ -91,6 +83,17 @@ mainFor ClashProject{..} = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
               ]
 
     want [ buildDir </> topName <.> "bit" ]
+
+    phony "clean" $ do
+        putNormal $ "Cleaning files in " ++ buildDir
+        removeFilesAfter buildDir [ "//*" ]
+
+    phony "clashi" $ do
+        let src = "src-clash" </> clashModule <.> "hs" -- TODO
+        clash "clashi" [src]
+
+    phony "clash" $ do
+        need [manifest]
 
     buildDir </> "vhdl" <//> "*.manifest" %> \out -> do
         let src = "src-clash" </> clashModule <.> "hs" -- TODO
