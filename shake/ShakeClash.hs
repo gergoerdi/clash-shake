@@ -138,5 +138,11 @@ mainFor ClashProject{..} = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
         copyFileChanged src out
 
     buildDir </> "src-vhdl" <//> "*" %> \out -> do
-        let src = "src-vhdl" </> (dropDirectory1 . dropDirectory1 $ out)
+        let file = dropDirectory1 . dropDirectory1 $ out
+        src <- do
+            board <- fromMaybe "papilio-pro" <$> getConfig "BOARD"
+            let src1 = "src-vhdl" </> board </> file
+                src2 = "src-vhdl" </> file
+            exists1 <- doesFileExist src1
+            return $ if exists1 then src1 else src2
         copyFileChanged src out
