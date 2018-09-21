@@ -39,6 +39,7 @@ targetMustache XilinxTarget{..} =
 boards :: M.Map String XilinxTarget
 boards = M.fromList
     [ ("papilio-pro", XilinxTarget "Spartan6" "xc6slx9" "tqg144" "-2")
+    , ("papilio-one", XilinxTarget "Spartan3E" "xc3s500e" "vq100" "-5")
     ]
 
 data ClashProject = ClashProject
