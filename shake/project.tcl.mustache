@@ -187,9 +187,6 @@ proc add_source_files {} {
    {{#srcs}}
    xfile add "{{fileName}}"
    {{/srcs}}
-   {{#ipcores}}
-   xfile add "ipcore_dir/{{name}}.xco"
-   {{/ipcores}}
 
    # Set the Top Module as well...
    project set top "rtl" $myTop

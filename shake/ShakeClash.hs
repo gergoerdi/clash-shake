@@ -14,6 +14,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.IO as T
 import qualified Data.Map as M
+import Data.List (sort, nub)
 import Data.Maybe (fromMaybe)
 import Data.Char (toLower)
 
@@ -47,13 +48,31 @@ data ClashProject = ClashProject
     , clashModule :: String
     , clashTopName :: String
     , topName :: String
-    , ipCores :: [String]
-    , vhdlSrcs :: [String]
     , clashFlags :: [String]
     , shakeDir :: String
     }
 
 buildDir = "_build"
+
+getBoard :: Action String
+getBoard = fromMaybe "papilio-pro" <$> getConfig "BOARD"
+
+getFilesForBoard :: FilePath -> [FilePattern] -> Action [FilePath]
+getFilesForBoard dir pats = do
+    board <- getBoard
+    files <- fmap mconcat . sequenceA $
+      [ map dropDirectory1 <$> getDirectoryFiles "" (map (dir </>) pats)
+      , map (dropDirectory1 . dropDirectory1) <$> getDirectoryFiles "" (map ((dir </> board) </>) pats)
+      ]
+    return $ nub . sort $ files
+
+getFileForBoard :: FilePath -> FilePath -> Action FilePath
+getFileForBoard dir file = do
+    board <- getBoard
+    overrideExists <- doesFileExist (dir </> board </> file)
+    let dir' | overrideExists = dir </> board
+             | otherwise = dir
+    return $ dir' </> file
 
 mainFor :: ClashProject -> IO ()
 mainFor ClashProject{..} = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
@@ -77,11 +96,17 @@ mainFor ClashProject{..} = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
             Manifest{..} <- read <$> readFile' manifest
             let clashTypes = map toLower clashTopName <> "_types"
                 clashSrcs = clashTypes : map TL.unpack componentNames
+            vhdlSrcs <- getFilesForBoard "src-vhdl" ["*.vhdl", "*.ucf"]
+            coreSrcs <- getFilesForBoard "ipcore_dir" ["*"]
             return $ mconcat
               [ [ "vhdl" </> clashModule </> clashTopName </> c <.> "vhdl" | c <- clashSrcs ]
-              , [ "src-vhdl" </> projectName <.> "ucf" ]
-              , [ "src-vhdl" </> vhdl <.> "vhdl" | vhdl <- vhdlSrcs ]
+              , [ "src-vhdl" </> vhdl | vhdl <- vhdlSrcs ]
+              , [ "ipcore_dir" </> core | core <- coreSrcs ]
               ]
+
+        ipCores = do
+            srcs <- getFilesForBoard "ipcore_dir" ["*.xco"]
+            return [ dropExtension src | src <- srcs ]
 
     want [ buildDir </> topName <.> "bit" ]
 
@@ -107,7 +132,6 @@ mainFor ClashProject{..} = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
         need $ mconcat
           [ [ buildDir </> projectName <.> "tcl" ]
           , [ buildDir </> src | src <- srcs ]
-          , [ buildDir </> "ipcore_dir" </> core <.> "xco" | core <- ipCores ]
           ]
         xilinx "xtclsh" [projectName <.> "tcl", "rebuild_project"]
 
@@ -116,10 +140,11 @@ mainFor ClashProject{..} = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
         s <- T.pack <$> readFile' src
         alwaysRerun
 
-        board <- fromMaybe "papilio-pro" <$> getConfig "BOARD"
+        board <- getBoard
         let target = fromMaybe (error $ unwords ["Unknown target board:", board]) $ M.lookup board boards
 
         srcs <- manifestSrcs
+        cores <- ipCores
 
         template <- case compileTemplate src s of
             Left err -> fail (show err)
@@ -129,20 +154,14 @@ mainFor ClashProject{..} = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
                      , [ "top" ~> T.pack topName ]
                      , targetMustache target
                      , [ "srcs" ~> [ object [ "fileName" ~> src ] | src <- srcs ] ]
-                     , [ "ipcores" ~> [ object [ "name" ~> core ] | core <- ipCores ] ]
+                     , [ "ipcores" ~> [ object [ "name" ~> core ] | core <- cores ] ]
                      ]
         writeFileChanged out . T.unpack $ substitute template values
 
-    buildDir <//> "*.xco" %> \out -> do
-        let src = "ise" </> dropDirectory1 out
+    buildDir </> "src-vhdl" <//> "*" %> \out -> do
+        src <- getFileForBoard "src-vhdl" (dropDirectory1 . dropDirectory1 $ out)
         copyFileChanged src out
 
-    buildDir </> "src-vhdl" <//> "*" %> \out -> do
-        let file = dropDirectory1 . dropDirectory1 $ out
-        src <- do
-            board <- fromMaybe "papilio-pro" <$> getConfig "BOARD"
-            let src1 = "src-vhdl" </> board </> file
-                src2 = "src-vhdl" </> file
-            exists1 <- doesFileExist src1
-            return $ if exists1 then src1 else src2
+    buildDir </> "ipcore_dir" <//> "*" %> \out -> do
+        src <- getFileForBoard "ipcore_dir" (dropDirectory1 . dropDirectory1 $ out)
         copyFileChanged src out
