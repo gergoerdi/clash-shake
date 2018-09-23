@@ -134,6 +134,10 @@ mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles 
     phony "clash" $ do
         need [manifest]
 
+    phony "ise" $ do
+        -- need [buildDir </> projectName <.> "tcl"]
+        xilinx "ise" [buildDir </> projectName <.> "tcl"]
+
     customRules ClashKit{..}
 
     buildDir </> "vhdl" <//> "*.manifest" %> \out -> do
