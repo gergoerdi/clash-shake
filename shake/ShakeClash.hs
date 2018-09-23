@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, RecordWildCards #-}
-module ShakeClash (ClashProject(..), mainFor) where
+module ShakeClash (ClashProject(..), buildDir, mainFor, mainForCustom) where
 
 import Development.Shake hiding ((~>))
 import Development.Shake.Command
@@ -52,6 +52,7 @@ data ClashProject = ClashProject
     , shakeDir :: String
     }
 
+buildDir :: FilePath
 buildDir = "_build"
 
 getBoard :: Action String
@@ -75,7 +76,10 @@ getFileForBoard dir file = do
     return $ dir' </> file
 
 mainFor :: ClashProject -> IO ()
-mainFor ClashProject{..} = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
+mainFor proj = mainForCustom proj $ pure ()
+
+mainForCustom :: ClashProject -> Rules () -> IO ()
+mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
     usingConfigFile "build.mk"
 
     let clash cmd args = do
@@ -120,6 +124,8 @@ mainFor ClashProject{..} = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
 
     phony "clash" $ do
         need [manifest]
+
+    customRules
 
     buildDir </> "vhdl" <//> "*.manifest" %> \out -> do
         let src = "src-clash" </> clashModule <.> "hs" -- TODO
