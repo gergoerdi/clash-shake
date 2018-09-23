@@ -1,5 +1,9 @@
 {-# LANGUAGE OverloadedStrings, RecordWildCards #-}
-module ShakeClash (ClashProject(..), buildDir, mainFor, mainForCustom) where
+module ShakeClash
+    ( ClashProject(..)
+    , ClashKit(..), buildDir
+    , mainFor, mainForCustom
+    ) where
 
 import Development.Shake hiding ((~>))
 import Development.Shake.Command
@@ -52,6 +56,11 @@ data ClashProject = ClashProject
     , shakeDir :: String
     }
 
+data ClashKit = ClashKit
+    { clash :: String -> [String] -> Action ()
+    , xilinx :: String -> [String] -> Action ()
+    }
+
 buildDir :: FilePath
 buildDir = "_build"
 
@@ -76,9 +85,9 @@ getFileForBoard dir file = do
     return $ dir' </> file
 
 mainFor :: ClashProject -> IO ()
-mainFor proj = mainForCustom proj $ pure ()
+mainFor proj = mainForCustom proj $ \_ -> pure ()
 
-mainForCustom :: ClashProject -> Rules () -> IO ()
+mainForCustom :: ClashProject -> (ClashKit -> Rules ()) -> IO ()
 mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
     usingConfigFile "build.mk"
 
@@ -125,7 +134,7 @@ mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles 
     phony "clash" $ do
         need [manifest]
 
-    customRules
+    customRules ClashKit{..}
 
     buildDir </> "vhdl" <//> "*.manifest" %> \out -> do
         let src = "src-clash" </> clashModule <.> "hs" -- TODO
