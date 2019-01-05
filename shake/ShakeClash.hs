@@ -108,7 +108,7 @@ mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles 
             need [manifest]
             Manifest{..} <- read <$> readFile' manifest
             let clashTypes = map toLower clashTopName <> "_types"
-                clashSrcs = clashTypes : map TL.unpack componentNames
+                clashSrcs = clashTypes : map T.unpack componentNames
             vhdlSrcs <- getFilesForBoard "src-vhdl" ["*.vhdl", "*.ucf"]
             coreSrcs <- getFilesForBoard "ipcore_dir" ["*"]
             return $ mconcat
