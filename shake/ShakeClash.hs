@@ -54,6 +54,7 @@ data ClashProject = ClashProject
     , topName :: String
     , clashFlags :: [String]
     , shakeDir :: String
+    , extraGenerated :: ClashKit -> [FilePath]
     }
 
 data ClashKit = ClashKit
@@ -103,9 +104,11 @@ mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles 
                     (Nothing, Nothing) -> error "XILINX_ROOT or XILINX must be set"
             cmd_ (Cwd buildDir) exe args
 
+    let kit = ClashKit{..}
+
     let manifest = buildDir </> "vhdl" </> clashModule </> clashTopName </> clashTopName <.> "manifest"
     let manifestSrcs = do
-            need [manifest]
+            need (manifest : extraGenerated kit)
             Manifest{..} <- read <$> readFile' manifest
             let clashTypes = map toLower clashTopName <> "_types"
                 clashSrcs = clashTypes : map T.unpack componentNames
@@ -138,7 +141,7 @@ mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles 
         -- need [buildDir </> projectName <.> "tcl"]
         xilinx "ise" [buildDir </> projectName <.> "tcl"]
 
-    customRules ClashKit{..}
+    customRules kit
 
     buildDir </> "vhdl" <//> "*.manifest" %> \out -> do
         let src = "src-clash" </> clashModule <.> "hs" -- TODO
