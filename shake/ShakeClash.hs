@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings, RecordWildCards, ViewPatterns #-}
 module ShakeClash
     ( ClashProject(..)
     , ClashKit(..), buildDir
@@ -23,6 +23,24 @@ import Data.Maybe (fromMaybe)
 import Data.Char (toLower)
 
 import Clash.Driver.Types
+
+data HDL
+    = Verilog
+    | VHDL
+    deriving (Eq, Enum, Bounded, Show, Read)
+
+hdlDir :: HDL -> FilePath
+hdlDir Verilog = "verilog"
+hdlDir VHDL = "vhdl"
+
+hdlFromDir :: FilePath -> Maybe HDL
+hdlFromDir "verilog" = Just Verilog
+hdlFromDir "vhdl" = Just VHDL
+hdlFromDir _ = Nothing
+
+hdlExt :: HDL -> FilePath
+hdlExt Verilog = "v"
+hdlExt VHDL = "vhdl"
 
 data XilinxTarget = XilinxTarget
     { targetFamily :: String
@@ -106,17 +124,19 @@ mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles 
 
     let kit = ClashKit{..}
 
-    let manifest = buildDir </> "vhdl" </> clashModule </> clashTopName </> clashTopName <.> "manifest"
-    let manifestSrcs = do
+    let manifest hdl = buildDir </> hdlDir hdl </> clashModule </> clashTopName </> clashTopName <.> "manifest"
+
+    let manifestSrcs hdl = do
+            manifest <- pure $ manifest hdl
             need (manifest : extraGenerated kit)
             Manifest{..} <- read <$> readFile' manifest
             let clashTypes = map toLower clashTopName <> "_types"
                 clashSrcs = clashTypes : map T.unpack componentNames
-            vhdlSrcs <- getFilesForBoard "src-vhdl" ["*.vhdl", "*.ucf"]
+            hdlSrcs <- getFilesForBoard "src-hdl" ["*.vhdl", "*.v", "*.ucf"]
             coreSrcs <- getFilesForBoard "ipcore_dir" ["*"]
             return $ mconcat
-              [ [ "vhdl" </> clashModule </> clashTopName </> c <.> "vhdl" | c <- clashSrcs ]
-              , [ "src-vhdl" </> vhdl | vhdl <- vhdlSrcs ]
+              [ [ hdlDir hdl </> clashModule </> clashTopName </> c <.> hdlExt hdl | c <- clashSrcs ]
+              , [ "src-hdl" </> hdl | hdl <- hdlSrcs ]
               , [ "ipcore_dir" </> core | core <- coreSrcs ]
               ]
 
@@ -134,8 +154,11 @@ mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles 
         let src = "src-clash" </> clashModule <.> "hs" -- TODO
         clash "clashi" [src]
 
-    phony "clash" $ do
-        need [manifest]
+    phony "clash-verilog" $ do
+        need [manifest Verilog]
+
+    phony "clash-vhdl" $ do
+        need [manifest VHDL]
 
     phony "ise" $ do
         -- need [buildDir </> projectName <.> "tcl"]
@@ -143,14 +166,16 @@ mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles 
 
     customRules kit
 
-    buildDir </> "vhdl" <//> "*.manifest" %> \out -> do
+    buildDir <//> "*.manifest" %> \out -> do
         let src = "src-clash" </> clashModule <.> "hs" -- TODO
+            hdlDir = takeDirectory1 . dropDirectory1 $ out
+        hdl <- maybe (fail $ unwords ["Unknown HDL:", hdlDir]) return $ hdlFromDir hdlDir
         alwaysRerun
         need [ src ]
-        clash "clash" ["--vhdl", src]
+        clash "clash" [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog" }, src]
 
     buildDir </> topName <.> "bit" %> \_out -> do
-        srcs <- manifestSrcs
+        srcs <- manifestSrcs VHDL
         need $ mconcat
           [ [ buildDir </> projectName <.> "tcl" ]
           , [ buildDir </> src | src <- srcs ]
@@ -165,7 +190,7 @@ mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles 
         board <- getBoard
         let target = fromMaybe (error $ unwords ["Unknown target board:", board]) $ M.lookup board boards
 
-        srcs <- manifestSrcs
+        srcs <- manifestSrcs VHDL
         cores <- ipCores
 
         template <- case compileTemplate src s of
@@ -180,8 +205,8 @@ mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles 
                      ]
         writeFileChanged out . T.unpack $ substitute template values
 
-    buildDir </> "src-vhdl" <//> "*" %> \out -> do
-        src <- getFileForBoard "src-vhdl" (dropDirectory1 . dropDirectory1 $ out)
+    buildDir </> "src-hdl" <//> "*" %> \out -> do
+        src <- getFileForBoard "src-hdl" (dropDirectory1 . dropDirectory1 $ out)
         copyFileChanged src out
 
     buildDir </> "ipcore_dir" <//> "*" %> \out -> do
