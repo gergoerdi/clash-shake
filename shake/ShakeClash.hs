@@ -197,7 +197,7 @@ mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles 
             Left err -> fail (show err)
             Right template -> return template
         let values = object . mconcat $
-                     [ [ "project" ~> T.pack clashModule ]
+                     [ [ "project" ~> T.pack projectName ]
                      , [ "top" ~> T.pack topName ]
                      , targetMustache target
                      , [ "srcs" ~> [ object [ "fileName" ~> src ] | src <- srcs ] ]
