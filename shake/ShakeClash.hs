@@ -109,6 +109,7 @@ mainFor proj = mainForCustom proj $ \_ -> pure ()
 mainForCustom :: ClashProject -> (ClashKit -> Rules ()) -> IO ()
 mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
     usingConfigFile "build.mk"
+    let mainHDL = VHDL
 
     let clash cmd args = do
             clashExe <- fromMaybe ("clash") <$> getConfig "CLASH"
@@ -175,7 +176,7 @@ mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles 
         clash "clash" [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog" }, src]
 
     buildDir </> topName <.> "bit" %> \_out -> do
-        srcs <- manifestSrcs VHDL
+        srcs <- manifestSrcs mainHDL
         need $ mconcat
           [ [ buildDir </> projectName <.> "tcl" ]
           , [ buildDir </> src | src <- srcs ]
@@ -190,7 +191,7 @@ mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles 
         board <- getBoard
         let target = fromMaybe (error $ unwords ["Unknown target board:", board]) $ M.lookup board boards
 
-        srcs <- manifestSrcs VHDL
+        srcs <- manifestSrcs mainHDL
         cores <- ipCores
 
         template <- case compileTemplate src s of
