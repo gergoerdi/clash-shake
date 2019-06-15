@@ -109,7 +109,7 @@ mainFor proj = mainForCustom proj $ \_ -> pure ()
 mainForCustom :: ClashProject -> (ClashKit -> Rules ()) -> IO ()
 mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
     usingConfigFile "build.mk"
-    let mainHDL = VHDL
+    let mainHDL = Verilog
 
     let clash cmd args = do
             clashExe <- fromMaybe ("clash") <$> getConfig "CLASH"
