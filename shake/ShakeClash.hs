@@ -21,6 +21,7 @@ import qualified Data.Map as M
 import Data.List (sort, nub)
 import Data.Maybe (fromMaybe)
 import Data.Char (toLower)
+import Control.Monad (guard, msum)
 
 import Clash.Driver.Types
 
@@ -86,22 +87,44 @@ buildDir = "_build"
 getBoard :: Action String
 getBoard = fromMaybe "papilio-pro" <$> getConfig "BOARD"
 
+getBoardConfig :: Action (Maybe String)
+getBoardConfig = getConfig "BOARDCONFIG"
+
 getFilesForBoard :: FilePath -> [FilePattern] -> Action [FilePath]
 getFilesForBoard dir pats = do
     board <- getBoard
-    files <- fmap mconcat . sequenceA $
-      [ map dropDirectory1 <$> getDirectoryFiles "" (map (dir </>) pats)
-      , map (dropDirectory1 . dropDirectory1) <$> getDirectoryFiles "" (map ((dir </> board) </>) pats)
+    cfg <- getBoardConfig
+    files <- fmap mconcat . sequenceA $ concat $
+      [ [ map (dropDirectoryN 1) <$> getDirectoryFiles "" (map (dir </>)                     pats)
+        , map (dropDirectoryN 2) <$> getDirectoryFiles "" (map ((dir </> board) </>)         pats)
+        ]
+      , [ map (dropDirectoryN 3) <$> getDirectoryFiles "" (map ((dir </> board </> cfg) </>) pats)
+        | Just cfg <- return cfg
+        ]
       ]
+    liftIO $ print files
     return $ nub . sort $ files
+  where
+    dropDirectoryN 0 = id
+    dropDirectoryN n = dropDirectoryN (n - 1) . dropDirectory1
 
 getFileForBoard :: FilePath -> FilePath -> Action FilePath
 getFileForBoard dir file = do
     board <- getBoard
-    overrideExists <- doesFileExist (dir </> board </> file)
-    let dir' | overrideExists = dir </> board
-             | otherwise = dir
+    cfg <- getBoardConfig
+    overrideDir <- fmap msum . sequenceA . concat $
+                   [ [ checkOverride (board </> cfg)
+                     | Just cfg <- return cfg ]
+                   , [ checkOverride board
+                     ]
+                   ]
+    let dir' = maybe dir (dir </>) overrideDir
     return $ dir' </> file
+  where
+    checkOverride subdir = do
+        exists <- doesFileExist (dir </> subdir </> file)
+        return $ guard exists >> return subdir
+
 
 mainFor :: ClashProject -> IO ()
 mainFor proj = mainForCustom proj $ \_ -> pure ()
