@@ -102,7 +102,6 @@ getFilesForBoard dir pats = do
         | Just cfg <- return cfg
         ]
       ]
-    liftIO $ print files
     return $ nub . sort $ files
   where
     dropDirectoryN 0 = id
