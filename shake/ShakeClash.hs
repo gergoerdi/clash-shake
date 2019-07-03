@@ -26,22 +26,26 @@ import Control.Monad (guard, msum)
 import Clash.Driver.Types
 
 data HDL
-    = Verilog
-    | VHDL
+    = VHDL
+    | Verilog
+    | SystemVerilog
     deriving (Eq, Enum, Bounded, Show, Read)
 
 hdlDir :: HDL -> FilePath
-hdlDir Verilog = "verilog"
 hdlDir VHDL = "vhdl"
+hdlDir Verilog = "verilog"
+hdlDir SystemVerilog = "systemverilog"
 
 hdlFromDir :: FilePath -> Maybe HDL
-hdlFromDir "verilog" = Just Verilog
 hdlFromDir "vhdl" = Just VHDL
+hdlFromDir "verilog" = Just Verilog
+hdlFromDir "systemverilog" = Just SystemVerilog
 hdlFromDir _ = Nothing
 
 hdlExt :: HDL -> FilePath
-hdlExt Verilog = "v"
 hdlExt VHDL = "vhdl"
+hdlExt Verilog = "v"
+hdlExt SystemVerilog = "sv"
 
 data XilinxTarget = XilinxTarget
     { targetFamily :: String
@@ -177,11 +181,14 @@ mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles 
         let src = "src-clash" </> clashModule <.> "hs" -- TODO
         clash "clashi" [src]
 
+    phony "clash-vhdl" $ do
+        need [manifest VHDL]
+
     phony "clash-verilog" $ do
         need [manifest Verilog]
 
-    phony "clash-vhdl" $ do
-        need [manifest VHDL]
+    phony "clash-systemverilog" $ do
+        need [manifest SystemVerilog]
 
     phony "ise" $ do
         -- need [buildDir </> projectName <.> "tcl"]
@@ -195,7 +202,7 @@ mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles 
         hdl <- maybe (fail $ unwords ["Unknown HDL:", hdlDir]) return $ hdlFromDir hdlDir
         alwaysRerun
         need [ src ]
-        clash "clash" [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog" }, src]
+        clash "clash" [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, src]
 
     buildDir </> topName <.> "bit" %> \_out -> do
         srcs <- manifestSrcs mainHDL
