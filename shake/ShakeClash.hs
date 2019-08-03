@@ -5,8 +5,9 @@ module ShakeClash
     , clashShake
     , ClashKit(..)
     , clashRules
-    , XilinxTarget(..), papilioPro, papilioOne
+    , XilinxTarget(..), papilioPro, papilioOne, nexysA750T
     , xilinxISE
+    , xilinxVivado
     ) where
 
 import Development.Shake hiding ((~>))
@@ -59,6 +60,7 @@ targetMustache XilinxTarget{..} =
     , "targetDevice" ~> T.pack targetDevice
     , "targetPackage" ~> T.pack targetPackage
     , "targetSpeed" ~> T.pack targetSpeed
+    , "part" ~> T.pack (targetDevice <> targetPackage <> targetSpeed)
     ]
 
 papilioPro :: XilinxTarget
@@ -66,6 +68,9 @@ papilioPro = XilinxTarget "Spartan6" "xc6slx9" "tqg144" "-2"
 
 papilioOne :: XilinxTarget
 papilioOne = XilinxTarget "Spartan3E" "xc3s500e" "vq100" "-5"
+
+nexysA750T :: XilinxTarget
+nexysA750T = XilinxTarget "Artrix7" "xc7a50t" "icsg324" "-1L"
 
 data ClashProject = ClashProject
     { projectName :: String
@@ -196,6 +201,78 @@ xilinxISE kit@ClashKit{..} fpga srcDir targetDir = do
               , [ outDir </> core | core <- cores ]
               ]
             ise "xtclsh" [projectName <.> "tcl", "rebuild_project"]
+
+xilinxVivado :: ClashKit -> XilinxTarget -> FilePath -> FilePath -> ClashRules ()
+xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
+    ClashProject{..} <- ask
+    let outDir = buildDir </> targetDir
+        rootDir = joinPath . map (const "..") . splitPath $ outDir
+
+    -- let vivado tool args = do
+    --         root <- getConfig "XILINX_ROOT"
+    --         wrap <- getConfig "XILINX"
+    --         let exe = case (wrap, root) of
+    --                 (Just wrap, _) -> [wrap, tool]
+    --                 (Nothing, Just root) -> [root </> "ISE/bin/lin64" </> tool]
+    --                 (Nothing, Nothing) -> error "XILINX_ROOT or XILINX must be set"
+    --         cmd_ (Cwd outDir) exe args
+
+    let getFiles dir pats = getDirectoryFiles srcDir [ dir </> pat | pat <- pats ]
+        hdlSrcs = getFiles "src-hdl" ["*.vhdl", "*.v" ]
+        constrSrcs = getFiles "src-hdl" ["*.xdc" ]
+        ipCores = getFiles "ip" ["*.xci"]
+
+    lift $ do
+        outDir <//> "*.tcl" %> \out -> do
+            let src = shakeDir </> "xilinx-vivado.tcl.mustache"
+            s <- T.pack <$> readFile' src
+            alwaysRerun
+
+            srcs1 <- manifestSrcs
+            srcs2 <- hdlSrcs
+            cores <- ipCores
+            constrs <- constrSrcs
+
+            template <- case compileTemplate src s of
+                Left err -> fail (show err)
+                Right template -> return template
+            let values = object . mconcat $
+                         [ [ "project" ~> T.pack projectName ]
+                         , [ "top" ~> T.pack topName ]
+                         , targetMustache fpga
+                         , [ "board" ~> T.pack "digilentinc.com:nexys-a7-50t:part0:1.0" ] -- TODO
+                         , [ "srcs" ~> mconcat
+                             [ [ object [ "fileName" ~> src ] | src <- srcs1 ]
+                             , [ object [ "fileName" ~> (srcDir </> src) ] | src <- srcs2 ]
+                             ]
+                           ]
+                         , [ "coreSrcs" ~> mconcat
+                             [ [ object [ "fileName" ~> (srcDir </> core) ] | core <- cores ]
+                             ]
+                           ]
+                         , [ "ipcores" ~> [ object [ "name" ~> takeBaseName core ] | core <- cores ] ]
+                         , [ "constraintSrcs" ~> [ object [ "fileName" ~> (srcDir </> src) ] | src <- constrs ] ]
+                         ]
+            writeFileChanged out . T.unpack $ substitute template values
+
+        -- phony (takeBaseName targetDir </> "vivado") $ do
+        --     need [outDir </> projectName <.> "tcl"]
+        --     vivado "vivado" [outDir </> projectName <.> "tcl"]
+
+        -- phony (takeBaseName targetDir </> "bitfile") $ do
+        --     need [outDir </> topName <.> "bit"]
+
+        -- outDir </> topName <.> "bit" %> \_out -> do
+        --     srcs1 <- manifestSrcs
+        --     srcs2 <- hdlSrcs
+        --     cores <- ipCores
+        --     need $ mconcat
+        --       [ [ outDir </> projectName <.> "tcl" ]
+        --       , [ src | src <- srcs1 ]
+        --       , [ srcDir </> src | src <- srcs2 ]
+        --       , [ outDir </> core | core <- cores ]
+        --       ]
+        --     ise "xtclsh" [projectName <.> "tcl", "rebuild_project"]
 
 clashShake :: ClashProject -> ClashRules () -> IO ()
 clashShake proj@ClashProject{..} rules = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
