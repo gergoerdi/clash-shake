@@ -1,8 +1,12 @@
 {-# LANGUAGE OverloadedStrings, RecordWildCards, ViewPatterns #-}
 module ShakeClash
     ( ClashProject(..)
-    , ClashKit(..), buildDir
-    , mainFor, mainForCustom
+    , HDL(..)
+    , clashShake
+    , ClashKit(..)
+    , clashRules
+    , XilinxTarget(..), papilioPro, papilioOne
+    , xilinxISE
     ) where
 
 import Development.Shake hiding ((~>))
@@ -18,10 +22,12 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.IO as T
 import qualified Data.Map as M
+import qualified Data.HashMap.Strict as HM
 import Data.List (sort, nub)
 import Data.Maybe (fromMaybe)
 import Data.Char (toLower)
 import Control.Monad (guard, msum)
+import Control.Monad.Reader
 
 import Clash.Driver.Types
 
@@ -36,12 +42,6 @@ hdlDir VHDL = "vhdl"
 hdlDir Verilog = "verilog"
 hdlDir SystemVerilog = "systemverilog"
 
-hdlFromDir :: FilePath -> Maybe HDL
-hdlFromDir "vhdl" = Just VHDL
-hdlFromDir "verilog" = Just Verilog
-hdlFromDir "systemverilog" = Just SystemVerilog
-hdlFromDir _ = Nothing
-
 hdlExt :: HDL -> FilePath
 hdlExt VHDL = "vhdl"
 hdlExt Verilog = "v"
@@ -54,9 +54,6 @@ data XilinxTarget = XilinxTarget
     , targetSpeed :: String
     }
 
-instance ToMustache XilinxTarget where
-    toMustache = object . targetMustache
-
 targetMustache XilinxTarget{..} =
     [ "targetFamily" ~> T.pack targetFamily
     , "targetDevice" ~> T.pack targetDevice
@@ -64,11 +61,11 @@ targetMustache XilinxTarget{..} =
     , "targetSpeed" ~> T.pack targetSpeed
     ]
 
-boards :: M.Map String XilinxTarget
-boards = M.fromList
-    [ ("papilio-pro", XilinxTarget "Spartan6" "xc6slx9" "tqg144" "-2")
-    , ("papilio-one", XilinxTarget "Spartan3E" "xc3s500e" "vq100" "-5")
-    ]
+papilioPro :: XilinxTarget
+papilioPro = XilinxTarget "Spartan6" "xc6slx9" "tqg144" "-2"
+
+papilioOne :: XilinxTarget
+papilioOne = XilinxTarget "Spartan3E" "xc3s500e" "vq100" "-5"
 
 data ClashProject = ClashProject
     { projectName :: String
@@ -76,169 +73,140 @@ data ClashProject = ClashProject
     , clashTopName :: String
     , topName :: String
     , clashFlags :: [String]
-    , shakeDir :: String
-    , extraGenerated :: ClashKit -> [FilePath]
+    , shakeDir :: FilePath
+    , buildDir :: FilePath
+    , clashDir :: FilePath
     }
+
+type ClashRules = ReaderT ClashProject Rules
 
 data ClashKit = ClashKit
     { clash :: String -> [String] -> Action ()
-    , xilinx :: String -> [String] -> Action ()
+    , manifestSrcs :: Action [FilePath]
     }
 
-buildDir :: FilePath
-buildDir = "_build"
-
-getBoard :: Action String
-getBoard = fromMaybe "papilio-pro" <$> getConfig "BOARD"
-
-getBoardConfig :: Action (Maybe String)
-getBoardConfig = getConfig "BOARDCONFIG"
-
-getFilesForBoard :: FilePath -> [FilePattern] -> Action [FilePath]
-getFilesForBoard dir pats = do
-    board <- getBoard
-    cfg <- getBoardConfig
-    files <- fmap mconcat . sequenceA $ concat $
-      [ [ map (dropDirectoryN 1) <$> getDirectoryFiles "" (map (dir </>)                     pats)
-        , map (dropDirectoryN 2) <$> getDirectoryFiles "" (map ((dir </> board) </>)         pats)
-        ]
-      , [ map (dropDirectoryN 3) <$> getDirectoryFiles "" (map ((dir </> board </> cfg) </>) pats)
-        | Just cfg <- return cfg
-        ]
-      ]
-    return $ nub . sort $ files
-  where
-    dropDirectoryN 0 = id
-    dropDirectoryN n = dropDirectoryN (n - 1) . dropDirectory1
-
-getFileForBoard :: FilePath -> FilePath -> Action FilePath
-getFileForBoard dir file = do
-    board <- getBoard
-    cfg <- getBoardConfig
-    overrideDir <- fmap msum . sequenceA . concat $
-                   [ [ checkOverride (board </> cfg)
-                     | Just cfg <- return cfg ]
-                   , [ checkOverride board
-                     ]
-                   ]
-    let dir' = maybe dir (dir </>) overrideDir
-    return $ dir' </> file
-  where
-    checkOverride subdir = do
-        exists <- doesFileExist (dir </> subdir </> file)
-        return $ guard exists >> return subdir
-
-
-mainFor :: ClashProject -> IO ()
-mainFor proj = mainForCustom proj $ \_ -> pure ()
-
-mainForCustom :: ClashProject -> (ClashKit -> Rules ()) -> IO ()
-mainForCustom ClashProject{..} customRules = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
-    usingConfigFile "build.mk"
-    let mainHDL = Verilog
+clashRules :: HDL -> FilePath -> Action () -> ClashRules ClashKit
+clashRules hdl srcDir extraGenerated = do
+    ClashProject{..} <- ask
+    let synDir = buildDir </> clashDir
+        rootDir = joinPath . map (const "..") . splitPath $ buildDir
+        srcDir' = rootDir </> srcDir
 
     let clash cmd args = do
             clashExe <- fromMaybe ("clash") <$> getConfig "CLASH"
-            cmd_ clashExe ([cmd, "-i" <> "src-clash", "-outputdir", buildDir] <> clashFlags <> args)
-        xilinx tool args = do
+            cmd_ (Cwd buildDir) clashExe
+              ([cmd, "-i" <> srcDir', "-outputdir", clashDir] <> clashFlags <> args)
+
+    let manifest = synDir </> hdlDir hdl </> clashModule </> clashTopName </> clashTopName <.> "manifest"
+        manifestSrcs = do
+            need [manifest]
+            Manifest{..} <- read <$> readFile' manifest
+            let clashSrcs = map T.unpack componentNames <>
+                            [ map toLower clashTopName <> "_types" | hdl == VHDL ]
+            return [ synDir </> hdlDir hdl </> clashModule </> clashTopName </> c <.> hdlExt hdl | c <- clashSrcs ]
+
+    lift $ do
+      synDir </> hdlDir hdl <//> "*.manifest" %> \out -> do
+          let src = srcDir </> clashModule <.> "hs" -- TODO
+          alwaysRerun
+          need [ src ]
+          extraGenerated
+          clash "clash" [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, rootDir </> src]
+
+      phony "clashi" $ do
+          let src = srcDir </> clashModule <.> "hs" -- TODO
+          clash "clashi" [rootDir </> src]
+
+      phony "clash" $ do
+          need [manifest]
+
+      phony "clean-clash" $ do
+          putNormal $ "Cleaning files in " ++ synDir
+          removeFilesAfter synDir [ "//*" ]
+
+    let kit = ClashKit{..}
+    return kit
+
+
+xilinxISE :: ClashKit -> XilinxTarget -> FilePath -> FilePath -> ClashRules ()
+xilinxISE kit@ClashKit{..} fpga srcDir targetDir = do
+    ClashProject{..} <- ask
+    let outDir = buildDir </> targetDir
+        rootDir = joinPath . map (const "..") . splitPath $ outDir
+
+    let ise tool args = do
             root <- getConfig "XILINX_ROOT"
             wrap <- getConfig "XILINX"
             let exe = case (wrap, root) of
                     (Just wrap, _) -> [wrap, tool]
                     (Nothing, Just root) -> [root </> "ISE/bin/lin64" </> tool]
                     (Nothing, Nothing) -> error "XILINX_ROOT or XILINX must be set"
-            cmd_ (Cwd buildDir) exe args
+            cmd_ (Cwd outDir) exe args
 
-    let kit = ClashKit{..}
+    let getFiles dir pats = getDirectoryFiles srcDir [ dir </> pat | pat <- pats ]
+        hdlSrcs = getFiles "src-hdl" ["*.vhdl", "*.v", "*.ucf" ]
+        ipCores = getFiles "ipcore_dir" ["*.xco", "*.xaw"]
 
-    let manifest hdl = buildDir </> hdlDir hdl </> clashModule </> clashTopName </> clashTopName <.> "manifest"
+    lift $ do
+        outDir <//> "*.tcl" %> \out -> do
+            let src = shakeDir </> "xilinx-ise.tcl.mustache"
+            s <- T.pack <$> readFile' src
+            alwaysRerun
 
-    let manifestSrcs hdl = do
-            manifest <- pure $ manifest hdl
-            need (manifest : extraGenerated kit)
-            Manifest{..} <- read <$> readFile' manifest
-            let clashSrcs = map T.unpack componentNames <>
-                            [ map toLower clashTopName <> "_types" | hdl == VHDL ]
-            hdlSrcs <- getFilesForBoard "src-hdl" ["*.vhdl", "*.v", "*.ucf"]
-            coreSrcs <- getFilesForBoard "ipcore_dir" ["*"]
-            return $ mconcat
-              [ [ hdlDir hdl </> clashModule </> clashTopName </> c <.> hdlExt hdl | c <- clashSrcs ]
-              , [ "src-hdl" </> hdl | hdl <- hdlSrcs ]
-              , [ "ipcore_dir" </> core | core <- coreSrcs ]
+            srcs1 <- manifestSrcs
+            srcs2 <- hdlSrcs
+            cores <- ipCores
+
+            template <- case compileTemplate src s of
+                Left err -> fail (show err)
+                Right template -> return template
+            let values = object . mconcat $
+                         [ [ "project" ~> T.pack projectName ]
+                         , [ "top" ~> T.pack topName ]
+                         , targetMustache fpga
+                         , [ "srcs" ~> mconcat
+                             [ [ object [ "fileName" ~> (rootDir </> src) ] | src <- srcs1 ]
+                             , [ object [ "fileName" ~> (rootDir </> srcDir </> src) ] | src <- srcs2 ]
+                             , [ object [ "fileName" ~> core ] | core <- cores ]
+                             ]
+                           ]
+                         , [ "ipcores" ~> [ object [ "name" ~> takeBaseName core ] | core <- cores ] ]
+                         ]
+            writeFileChanged out . T.unpack $ substitute template values
+
+        outDir </> "ipcore_dir" <//> "*" %> \out -> do
+            let src = srcDir </> makeRelative outDir out
+            copyFileChanged src out
+
+        phony (takeBaseName targetDir </> "ise") $ do
+            need [outDir </> projectName <.> "tcl"]
+            ise "ise" [outDir </> projectName <.> "tcl"]
+
+        phony (takeBaseName targetDir </> "bitfile") $ do
+            need [outDir </> topName <.> "bit"]
+
+        outDir </> topName <.> "bit" %> \_out -> do
+            srcs1 <- manifestSrcs
+            srcs2 <- hdlSrcs
+            cores <- ipCores
+            need $ mconcat
+              [ [ outDir </> projectName <.> "tcl" ]
+              , [ src | src <- srcs1 ]
+              , [ srcDir </> src | src <- srcs2 ]
+              , [ outDir </> core | core <- cores ]
               ]
+            ise "xtclsh" [projectName <.> "tcl", "rebuild_project"]
 
-        ipCores = do
-            srcs <- getFilesForBoard "ipcore_dir" ["*.xco"]
-            return [ dropExtension src | src <- srcs ]
-
-    want [ buildDir </> topName <.> "bit" ]
+clashShake :: ClashProject -> ClashRules () -> IO ()
+clashShake proj@ClashProject{..} rules = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
+    usingConfigFile "build.mk"
+    cfg <- liftIO $ readConfigFile "build.mk"
+    runReaderT rules proj
 
     phony "clean" $ do
         putNormal $ "Cleaning files in " ++ buildDir
         removeFilesAfter buildDir [ "//*" ]
 
-    phony "clashi" $ do
-        let src = "src-clash" </> clashModule <.> "hs" -- TODO
-        clash "clashi" [src]
-
-    phony "clash-vhdl" $ do
-        need [manifest VHDL]
-
-    phony "clash-verilog" $ do
-        need [manifest Verilog]
-
-    phony "clash-systemverilog" $ do
-        need [manifest SystemVerilog]
-
-    phony "ise" $ do
-        -- need [buildDir </> projectName <.> "tcl"]
-        xilinx "ise" [buildDir </> projectName <.> "tcl"]
-
-    customRules kit
-
-    buildDir <//> "*.manifest" %> \out -> do
-        let src = "src-clash" </> clashModule <.> "hs" -- TODO
-            hdlDir = takeDirectory1 . dropDirectory1 $ out
-        hdl <- maybe (fail $ unwords ["Unknown HDL:", hdlDir]) return $ hdlFromDir hdlDir
-        alwaysRerun
-        need [ src ]
-        clash "clash" [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, src]
-
-    buildDir </> topName <.> "bit" %> \_out -> do
-        srcs <- manifestSrcs mainHDL
-        need $ mconcat
-          [ [ buildDir </> projectName <.> "tcl" ]
-          , [ buildDir </> src | src <- srcs ]
-          ]
-        xilinx "xtclsh" [projectName <.> "tcl", "rebuild_project"]
-
-    buildDir <//> "*.tcl" %> \out -> do
-        let src = shakeDir </> "project.tcl.mustache"
-        s <- T.pack <$> readFile' src
-        alwaysRerun
-
-        board <- getBoard
-        let target = fromMaybe (error $ unwords ["Unknown target board:", board]) $ M.lookup board boards
-
-        srcs <- manifestSrcs mainHDL
-        cores <- ipCores
-
-        template <- case compileTemplate src s of
-            Left err -> fail (show err)
-            Right template -> return template
-        let values = object . mconcat $
-                     [ [ "project" ~> T.pack projectName ]
-                     , [ "top" ~> T.pack topName ]
-                     , targetMustache target
-                     , [ "srcs" ~> [ object [ "fileName" ~> src ] | src <- srcs ] ]
-                     , [ "ipcores" ~> [ object [ "name" ~> core ] | core <- cores ] ]
-                     ]
-        writeFileChanged out . T.unpack $ substitute template values
-
-    buildDir </> "src-hdl" <//> "*" %> \out -> do
-        src <- getFileForBoard "src-hdl" (dropDirectory1 . dropDirectory1 $ out)
-        copyFileChanged src out
-
-    buildDir </> "ipcore_dir" <//> "*" %> \out -> do
-        src <- getFileForBoard "ipcore_dir" (dropDirectory1 . dropDirectory1 $ out)
-        copyFileChanged src out
+    want $ case HM.lookup "TARGET" cfg of
+        Nothing -> ["clash"]
+        Just target -> [target </> "bitfile"]
