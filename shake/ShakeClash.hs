@@ -8,6 +8,7 @@ module ShakeClash
     , XilinxTarget(..), papilioPro, papilioOne, nexysA750T
     , xilinxISE
     , xilinxVivado
+    , hexImage
     ) where
 
 import Development.Shake hiding ((~>))
@@ -29,8 +30,10 @@ import Data.Maybe (fromMaybe)
 import Data.Char (toLower)
 import Control.Monad (guard, msum)
 import Control.Monad.Reader
+import qualified Data.ByteString as BS
 
 import Clash.Driver.Types
+import Clash.Prelude (pack)
 
 data HDL
     = VHDL
@@ -297,3 +300,11 @@ clashShake proj@ClashProject{..} rules = shakeArgs shakeOptions{ shakeFiles = bu
     want $ case HM.lookup "TARGET" cfg of
         Nothing -> ["clash"]
         Just target -> [target </> "bitfile"]
+
+hexImage :: Maybe Int -> FilePath -> FilePath -> Action ()
+hexImage size src out = do
+    bs <- liftIO $ maybe id ensureSize size . BS.unpack <$> BS.readFile src
+    let bvs = map (filter (/= '_') . show . pack) bs
+    writeFileChanged out (unlines bvs)
+  where
+    ensureSize size bs = take size $ bs <> repeat 0
