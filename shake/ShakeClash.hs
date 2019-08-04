@@ -140,12 +140,12 @@ xilinxISE kit@ClashKit{..} fpga srcDir targetDir = do
         rootDir = joinPath . map (const "..") . splitPath $ outDir
 
     let ise tool args = do
-            root <- getConfig "XILINX_ROOT"
-            wrap <- getConfig "XILINX"
+            root <- getConfig "ISE_ROOT"
+            wrap <- getConfig "ISE"
             let exe = case (wrap, root) of
                     (Just wrap, _) -> [wrap, tool]
                     (Nothing, Just root) -> [root </> "ISE/bin/lin64" </> tool]
-                    (Nothing, Nothing) -> error "XILINX_ROOT or XILINX must be set"
+                    (Nothing, Nothing) -> error "ISE_ROOT or ISE must be set"
             cmd_ (Cwd outDir) exe args
 
     let getFiles dir pats = getDirectoryFiles srcDir [ dir </> pat | pat <- pats ]
@@ -208,14 +208,14 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
     let outDir = buildDir </> targetDir
         rootDir = joinPath . map (const "..") . splitPath $ outDir
 
-    -- let vivado tool args = do
-    --         root <- getConfig "XILINX_ROOT"
-    --         wrap <- getConfig "XILINX"
-    --         let exe = case (wrap, root) of
-    --                 (Just wrap, _) -> [wrap, tool]
-    --                 (Nothing, Just root) -> [root </> "ISE/bin/lin64" </> tool]
-    --                 (Nothing, Nothing) -> error "XILINX_ROOT or XILINX must be set"
-    --         cmd_ (Cwd outDir) exe args
+    let vivado tool args = do
+            root <- getConfig "VIVADO_ROOT"
+            wrap <- getConfig "VIVADO"
+            let exe = case (wrap, root) of
+                    (Just wrap, _) -> [wrap, tool]
+                    (Nothing, Just root) -> [root </> "bin" </> tool]
+                    (Nothing, Nothing) -> error "VIVADO_ROOT or VIVADO must be set"
+            cmd_ (Cwd outDir) exe args
 
     let getFiles dir pats = getDirectoryFiles srcDir [ dir </> pat | pat <- pats ]
         hdlSrcs = getFiles "src-hdl" ["*.vhdl", "*.v" ]
@@ -223,6 +223,16 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
         ipCores = getFiles "ip" ["*.xci"]
 
     lift $ do
+        outDir <//> "*.xpr" %> \out -> do
+            let tcl = takeDirectory out -<.> "tcl"
+            need [tcl]
+            vivado "vivado"
+              [ "-mode batch"
+              , "-nojournal"
+              , "-nolog"
+              , "-source", rootDir </> tcl
+              ]
+
         outDir <//> "*.tcl" %> \out -> do
             let src = shakeDir </> "xilinx-vivado.tcl.mustache"
             s <- T.pack <$> readFile' src
@@ -255,9 +265,9 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
                          ]
             writeFileChanged out . T.unpack $ substitute template values
 
-        -- phony (takeBaseName targetDir </> "vivado") $ do
-        --     need [outDir </> projectName <.> "tcl"]
-        --     vivado "vivado" [outDir </> projectName <.> "tcl"]
+        phony (takeBaseName targetDir </> "vivado") $ do
+            need [outDir </> projectName </> projectName <.> "xpr"]
+            vivado "vivado" [outDir </> projectName </> projectName <.> "tcl"]
 
         -- phony (takeBaseName targetDir </> "bitfile") $ do
         --     need [outDir </> topName <.> "bit"]
