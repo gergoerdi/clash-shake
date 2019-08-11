@@ -25,9 +25,6 @@ set files [list \
  {{#srcs}}
  [file normalize "${origin_dir}/{{fileName}}" ]\
  {{/srcs}}
- [file normalize "${origin_dir}/_build/clash-syn/verilog/SpaceInvaders/SpaceInvaders/image.hex" ]\
- [file normalize "${origin_dir}/_build/clash-syn/verilog/SpaceInvaders/SpaceInvaders/null-SpaceInvaders-0-1024x8.hex" ]\
- [file normalize "${origin_dir}/_build/clash-syn/verilog/SpaceInvaders/SpaceInvaders/null-SpaceInvaders-1-7168x8.hex" ]\
 ]
 add_files -norecurse -fileset $obj $files
 set_property -name "top" -value "{{top}}" -objects $obj
