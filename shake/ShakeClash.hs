@@ -259,8 +259,9 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
                              , [ object [ "fileName" ~> (srcDir </> src) ] | src <- srcs2 ]
                              ]
                            ]
-                         , [ "coreSrcs" ~> mconcat
-                             [ [ object [ "fileName" ~> (srcDir </> core) ] | core <- cores ]
+                         , [ "coreSrcs" ~> object
+                             [ "nonempty" ~> not (null cores)
+                             , "items" ~> [ object [ "fileName" ~> (srcDir </> core) ] | core <- cores ]
                              ]
                            ]
                          , [ "ipcores" ~> [ object [ "name" ~> takeBaseName core ] | core <- cores ] ]

@@ -29,12 +29,14 @@ set files [list \
 add_files -norecurse -fileset $obj $files
 set_property -name "top" -value "{{top}}" -objects $obj
 
+{{#coreSrcs.nonempty}}
 set files [list \
- {{#coreSrcs}}
+ {{#coreSrcs.items}}
  [file normalize "${origin_dir}/{{fileName}}" ]\
- {{/coreSrcs}}
+ {{/coreSrcs.items}}
 ]
 set imported_files [import_files -fileset sources_1 $files]
+{{/coreSrcs.nonempty}}
 
 {{#ipcores}}
 set file "{{name}}/{{name}}.xci"
