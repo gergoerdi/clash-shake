@@ -157,7 +157,7 @@ xilinxISE kit@ClashKit{..} fpga srcDir targetDir = do
 
     lift $ do
         outDir <//> "*.tcl" %> \out -> do
-            let src = shakeDir </> "xilinx-ise.tcl.mustache"
+            let src = shakeDir </> "xilinx-ise/project.tcl.mustache"
             s <- T.pack <$> readFile' src
             alwaysRerun
 
@@ -209,6 +209,8 @@ xilinxVivado :: ClashKit -> XilinxTarget -> FilePath -> FilePath -> ClashRules (
 xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
     ClashProject{..} <- ask
     let outDir = buildDir </> targetDir
+        projectDir = outDir </> projectName
+        xpr = projectDir </> projectName <.> "xpr"
         rootDir = joinPath . map (const "..") . splitPath $ outDir
 
     let vivado tool args = do
@@ -226,8 +228,8 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
         ipCores = getFiles "ip" ["*.xci"]
 
     lift $ do
-        outDir <//> "*.xpr" %> \out -> do
-            let tcl = takeDirectory out -<.> "tcl"
+        xpr %> \out -> do
+            let tcl = outDir </> "project.tcl"
             need [tcl]
             vivado "vivado"
               [ "-mode batch"
@@ -236,8 +238,8 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
               , "-source", rootDir </> tcl
               ]
 
-        outDir <//> "*.tcl" %> \out -> do
-            let src = shakeDir </> "xilinx-vivado.tcl.mustache"
+        outDir </> "project.tcl" %> \out -> do
+            let src = shakeDir </> "xilinx-vivado/project.tcl.mustache"
             s <- T.pack <$> readFile' src
             alwaysRerun
 
@@ -269,24 +271,35 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
                          ]
             writeFileChanged out . T.unpack $ substitute template values
 
+        outDir </> "build.tcl" %> \out -> do
+            let src = shakeDir </> "xilinx-vivado/project-build.tcl.mustache"
+            s <- T.pack <$> readFile' src
+            alwaysRerun
+
+            template <- case compileTemplate src s of
+                Left err -> fail (show err)
+                Right template -> return template
+            let values = object . mconcat $
+                         [ [ "project" ~> T.pack projectName ]
+                         , [ "top" ~> T.pack topName ]
+                         ]
+            writeFileChanged out . T.unpack $ substitute template values
+
         phony (takeBaseName targetDir </> "vivado") $ do
-            need [outDir </> projectName </> projectName <.> "xpr"]
-            vivado "vivado" [outDir </> projectName </> projectName <.> "tcl"]
+            need [xpr]
+            vivado "vivado" [xpr]
 
-        -- phony (takeBaseName targetDir </> "bitfile") $ do
-        --     need [outDir </> topName <.> "bit"]
+        phony (takeBaseName targetDir </> "bitfile") $ do
+            need [projectDir </> projectName <.> "runs" </> "impl_1" </> topName <.> "bit"]
 
-        -- outDir </> topName <.> "bit" %> \_out -> do
-        --     srcs1 <- manifestSrcs
-        --     srcs2 <- hdlSrcs
-        --     cores <- ipCores
-        --     need $ mconcat
-        --       [ [ outDir </> projectName <.> "tcl" ]
-        --       , [ src | src <- srcs1 ]
-        --       , [ srcDir </> src | src <- srcs2 ]
-        --       , [ outDir </> core | core <- cores ]
-        --       ]
-        --     ise "xtclsh" [projectName <.> "tcl", "rebuild_project"]
+        projectDir </> projectName <.> "runs" </> "impl_1" </> topName <.> "bit" %> \out -> do
+            need [xpr, outDir </> "build.tcl"]
+            vivado "vivado"
+              [ "-mode batch"
+              , "-nojournal"
+              , "-nolog"
+              , "-source", "." </> "build.tcl"
+              ]
 
 clashShake :: ClashProject -> ClashRules () -> IO ()
 clashShake proj@ClashProject{..} rules = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
