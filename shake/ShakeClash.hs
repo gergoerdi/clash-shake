@@ -221,6 +221,14 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
                     (Nothing, Just root) -> [root </> "bin" </> tool]
                     (Nothing, Nothing) -> error "VIVADO_ROOT or VIVADO must be set"
             cmd_ (Cwd outDir) exe args
+        vivadoBatch tcl = do
+            need [outDir </> tcl]
+            vivado "vivado"
+              [ "-mode batch"
+              , "-nojournal"
+              , "-nolog"
+              , "-source", tcl
+              ]
 
     let getFiles dir pats = getDirectoryFiles srcDir [ dir </> pat | pat <- pats ]
         hdlSrcs = getFiles "src-hdl" ["*.vhdl", "*.v" ]
@@ -228,15 +236,7 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
         ipCores = getFiles "ip" ["*.xci"]
 
     lift $ do
-        xpr %> \out -> do
-            let tcl = outDir </> "project.tcl"
-            need [tcl]
-            vivado "vivado"
-              [ "-mode batch"
-              , "-nojournal"
-              , "-nolog"
-              , "-source", rootDir </> tcl
-              ]
+        xpr %> \out -> vivadoBatch "project.tcl"
 
         outDir </> "project.tcl" %> \out -> do
             let src = shakeDir </> "xilinx-vivado/project.tcl.mustache"
@@ -285,6 +285,21 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
                          ]
             writeFileChanged out . T.unpack $ substitute template values
 
+        outDir </> "upload.tcl" %> \out -> do
+            let src = shakeDir </> "xilinx-vivado/upload.tcl.mustache"
+            s <- T.pack <$> readFile' src
+            alwaysRerun
+
+            template <- case compileTemplate src s of
+                Left err -> fail (show err)
+                Right template -> return template
+            let values = object . mconcat $
+                         [ [ "project" ~> T.pack projectName ]
+                         , [ "top" ~> T.pack topName ]
+                         , targetMustache fpga
+                         ]
+            writeFileChanged out . T.unpack $ substitute template values
+
         phony (takeBaseName targetDir </> "vivado") $ do
             need [xpr]
             vivado "vivado" [xpr]
@@ -293,13 +308,12 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
             need [projectDir </> projectName <.> "runs" </> "impl_1" </> topName <.> "bit"]
 
         projectDir </> projectName <.> "runs" </> "impl_1" </> topName <.> "bit" %> \out -> do
-            need [xpr, outDir </> "build.tcl"]
-            vivado "vivado"
-              [ "-mode batch"
-              , "-nojournal"
-              , "-nolog"
-              , "-source", "." </> "build.tcl"
-              ]
+            need [xpr]
+            vivadoBatch "build.tcl"
+
+        phony (takeBaseName targetDir </> "upload") $ do
+            need [projectDir </> projectName <.> "runs" </> "impl_1" </> topName <.> "bit"]
+            vivadoBatch "upload.tcl"
 
 clashShake :: ClashProject -> ClashRules () -> IO ()
 clashShake proj@ClashProject{..} rules = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
