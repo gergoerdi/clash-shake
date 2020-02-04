@@ -31,6 +31,7 @@ import Data.Char (toLower)
 import Control.Monad (guard, msum)
 import Control.Monad.Reader
 import qualified Data.ByteString as BS
+import qualified System.Directory as Dir
 
 import Clash.Driver.Types
 import Clash.Prelude (pack)
@@ -101,7 +102,7 @@ clashRules hdl srcDir extraGenerated = do
         srcDir' = rootDir </> srcDir
 
     let clash cmd args = do
-            clashExe <- fromMaybe ("clash") <$> getConfig "CLASH"
+            clashExe <- fromMaybe ("stack exec --") <$> getConfig "CLASH"
             cmd_ (Cwd buildDir) clashExe
               ([cmd, "-i" <> srcDir', "-outputdir", clashDir] <> clashFlags <> args)
 
@@ -148,7 +149,7 @@ xilinxISE kit@ClashKit{..} fpga srcDir targetDir = do
             let exe = case (wrap, root) of
                     (Just wrap, _) -> [wrap, tool]
                     (Nothing, Just root) -> [root </> "ISE/bin/lin64" </> tool]
-                    (Nothing, Nothing) -> error "ISE_ROOT or ISE must be set"
+                    (Nothing, Nothing) -> error "ISE_ROOT or ISE must be set in build.mk"
             cmd_ (Cwd outDir) exe args
 
     let getFiles dir pats = getDirectoryFiles srcDir [ dir </> pat | pat <- pats ]
@@ -219,12 +220,12 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
             let exe = case (wrap, root) of
                     (Just wrap, _) -> [wrap, tool]
                     (Nothing, Just root) -> [root </> "bin" </> tool]
-                    (Nothing, Nothing) -> error "VIVADO_ROOT or VIVADO must be set"
+                    (Nothing, Nothing) -> error "VIVADO_ROOT or VIVADO must be set in build.mk"
             cmd_ (Cwd outDir) exe args
         vivadoBatch tcl = do
             need [outDir </> tcl]
             vivado "vivado"
-              [ "-mode batch"
+              [ "-mode", "batch"
               , "-nojournal"
               , "-nolog"
               , "-source", tcl
@@ -317,8 +318,14 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
 
 clashShake :: ClashProject -> ClashRules () -> IO ()
 clashShake proj@ClashProject{..} rules = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
-    usingConfigFile "build.mk"
-    cfg <- liftIO $ readConfigFile "build.mk"
+    cfg <- do
+        haveConfig <- liftIO $ Dir.doesFileExist "build.mk"
+        if haveConfig then do
+            usingConfigFile "build.mk"
+            liftIO $ readConfigFile "build.mk"
+          else do
+            usingConfig mempty
+            return mempty
     runReaderT rules proj
 
     phony "clean" $ do
