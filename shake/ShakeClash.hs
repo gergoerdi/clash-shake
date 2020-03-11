@@ -11,7 +11,7 @@ module ShakeClash
     , hexImage
     ) where
 
-import Development.Shake hiding ((~>))
+import Development.Shake
 import Development.Shake.Command
 import Development.Shake.FilePath
 import Development.Shake.Config
@@ -19,7 +19,10 @@ import Development.Shake.Util
 
 import Control.Monad.Trans
 
-import Text.Mustache
+import Text.Microstache
+import Data.Aeson
+import Data.String (fromString)
+
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.IO as T
@@ -60,11 +63,11 @@ data XilinxTarget = XilinxTarget
     }
 
 targetMustache XilinxTarget{..} =
-    [ "targetFamily" ~> T.pack targetFamily
-    , "targetDevice" ~> T.pack targetDevice
-    , "targetPackage" ~> T.pack targetPackage
-    , "targetSpeed" ~> T.pack targetSpeed
-    , "part" ~> T.pack (targetDevice <> targetPackage <> targetSpeed)
+    [ "targetFamily"  .= T.pack targetFamily
+    , "targetDevice"  .= T.pack targetDevice
+    , "targetPackage" .= T.pack targetPackage
+    , "targetSpeed"   .= T.pack targetSpeed
+    , "part"          .= T.pack (targetDevice <> targetPackage <> targetSpeed)
     ]
 
 papilioPro :: XilinxTarget
@@ -159,29 +162,29 @@ xilinxISE kit@ClashKit{..} fpga srcDir targetDir = do
     lift $ do
         outDir <//> "*.tcl" %> \out -> do
             let src = shakeDir </> "xilinx-ise/project.tcl.mustache"
-            s <- T.pack <$> readFile' src
+            s <- TL.pack <$> readFile' src
             alwaysRerun
 
             srcs1 <- manifestSrcs
             srcs2 <- hdlSrcs
             cores <- ipCores
 
-            template <- case compileTemplate src s of
+            template <- case compileMustacheText (fromString src) s of
                 Left err -> fail (show err)
                 Right template -> return template
             let values = object . mconcat $
-                         [ [ "project" ~> T.pack projectName ]
-                         , [ "top" ~> T.pack topName ]
+                         [ [ "project" .= T.pack projectName ]
+                         , [ "top" .= T.pack topName ]
                          , targetMustache fpga
-                         , [ "srcs" ~> mconcat
-                             [ [ object [ "fileName" ~> (rootDir </> src) ] | src <- srcs1 ]
-                             , [ object [ "fileName" ~> (rootDir </> srcDir </> src) ] | src <- srcs2 ]
-                             , [ object [ "fileName" ~> core ] | core <- cores ]
+                         , [ "srcs" .= mconcat
+                             [ [ object [ "fileName" .= (rootDir </> src) ] | src <- srcs1 ]
+                             , [ object [ "fileName" .= (rootDir </> srcDir </> src) ] | src <- srcs2 ]
+                             , [ object [ "fileName" .= core ] | core <- cores ]
                              ]
                            ]
-                         , [ "ipcores" ~> [ object [ "name" ~> takeBaseName core ] | core <- cores ] ]
+                         , [ "ipcores" .= [ object [ "name" .= takeBaseName core ] | core <- cores ] ]
                          ]
-            writeFileChanged out . T.unpack $ substitute template values
+            writeFileChanged out . TL.unpack $ renderMustache template values
 
         outDir </> "ipcore_dir" <//> "*" %> \out -> do
             let src = srcDir </> makeRelative outDir out
@@ -241,7 +244,7 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
 
         outDir </> "project.tcl" %> \out -> do
             let src = shakeDir </> "xilinx-vivado/project.tcl.mustache"
-            s <- T.pack <$> readFile' src
+            s <- TL.pack <$> readFile' src
             alwaysRerun
 
             srcs1 <- manifestSrcs
@@ -249,57 +252,57 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
             cores <- ipCores
             constrs <- constrSrcs
 
-            template <- case compileTemplate src s of
+            template <- case compileMustacheText (fromString src) s of
                 Left err -> fail (show err)
                 Right template -> return template
             let values = object . mconcat $
-                         [ [ "project" ~> T.pack projectName ]
-                         , [ "top" ~> T.pack topName ]
+                         [ [ "project" .= T.pack projectName ]
+                         , [ "top" .= T.pack topName ]
                          , targetMustache fpga
-                         , [ "board" ~> T.pack "digilentinc.com:nexys-a7-50t:part0:1.0" ] -- TODO
-                         , [ "srcs" ~> mconcat
-                             [ [ object [ "fileName" ~> src ] | src <- srcs1 ]
-                             , [ object [ "fileName" ~> (srcDir </> src) ] | src <- srcs2 ]
+                         , [ "board" .= T.pack "digilentinc.com:nexys-a7-50t:part0:1.0" ] -- TODO
+                         , [ "srcs" .= mconcat
+                             [ [ object [ "fileName" .= src ] | src <- srcs1 ]
+                             , [ object [ "fileName" .= (srcDir </> src) ] | src <- srcs2 ]
                              ]
                            ]
-                         , [ "coreSrcs" ~> object
-                             [ "nonempty" ~> not (null cores)
-                             , "items" ~> [ object [ "fileName" ~> (srcDir </> core) ] | core <- cores ]
+                         , [ "coreSrcs" .= object
+                             [ "nonempty" .= not (null cores)
+                             , "items" .= [ object [ "fileName" .= (srcDir </> core) ] | core <- cores ]
                              ]
                            ]
-                         , [ "ipcores" ~> [ object [ "name" ~> takeBaseName core ] | core <- cores ] ]
-                         , [ "constraintSrcs" ~> [ object [ "fileName" ~> (srcDir </> src) ] | src <- constrs ] ]
+                         , [ "ipcores" .= [ object [ "name" .= takeBaseName core ] | core <- cores ] ]
+                         , [ "constraintSrcs" .= [ object [ "fileName" .= (srcDir </> src) ] | src <- constrs ] ]
                          ]
-            writeFileChanged out . T.unpack $ substitute template values
+            writeFileChanged out . TL.unpack $ renderMustache template values
 
         outDir </> "build.tcl" %> \out -> do
             let src = shakeDir </> "xilinx-vivado/project-build.tcl.mustache"
-            s <- T.pack <$> readFile' src
+            s <- TL.pack <$> readFile' src
             alwaysRerun
 
-            template <- case compileTemplate src s of
+            template <- case compileMustacheText (fromString src) s of
                 Left err -> fail (show err)
                 Right template -> return template
             let values = object . mconcat $
-                         [ [ "project" ~> T.pack projectName ]
-                         , [ "top" ~> T.pack topName ]
+                         [ [ "project" .= T.pack projectName ]
+                         , [ "top" .= T.pack topName ]
                          ]
-            writeFileChanged out . T.unpack $ substitute template values
+            writeFileChanged out . TL.unpack $ renderMustache template values
 
         outDir </> "upload.tcl" %> \out -> do
             let src = shakeDir </> "xilinx-vivado/upload.tcl.mustache"
-            s <- T.pack <$> readFile' src
+            s <- TL.pack <$> readFile' src
             alwaysRerun
 
-            template <- case compileTemplate src s of
+            template <- case compileMustacheText (fromString src) s of
                 Left err -> fail (show err)
                 Right template -> return template
             let values = object . mconcat $
-                         [ [ "project" ~> T.pack projectName ]
-                         , [ "top" ~> T.pack topName ]
+                         [ [ "project" .= T.pack projectName ]
+                         , [ "top" .= T.pack topName ]
                          , targetMustache fpga
                          ]
-            writeFileChanged out . T.unpack $ substitute template values
+            writeFileChanged out . TL.unpack $ renderMustache template values
 
         phony (takeBaseName targetDir </> "vivado") $ do
             need [xpr]
