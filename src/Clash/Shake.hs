@@ -1,5 +1,5 @@
-{-# LANGUAGE OverloadedStrings, RecordWildCards, ViewPatterns #-}
-module ShakeClash
+{-# LANGUAGE OverloadedStrings, RecordWildCards, ViewPatterns, TemplateHaskell #-}
+module Clash.Shake
     ( ClashProject(..)
     , HDL(..)
     , clashShake
@@ -19,7 +19,8 @@ import Development.Shake.Util
 
 import Control.Monad.Trans
 
-import Text.Microstache
+import Text.Mustache
+import qualified Text.Mustache.Compile.TH as TH
 import Data.Aeson
 import Data.String (fromString)
 
@@ -85,7 +86,6 @@ data ClashProject = ClashProject
     , clashTopName :: String
     , topName :: String
     , clashFlags :: [String]
-    , shakeDir :: FilePath
     , buildDir :: FilePath
     , clashDir :: FilePath
     }
@@ -161,17 +161,11 @@ xilinxISE kit@ClashKit{..} fpga srcDir targetDir = do
 
     lift $ do
         outDir <//> "*.tcl" %> \out -> do
-            let src = shakeDir </> "xilinx-ise/project.tcl.mustache"
-            s <- TL.pack <$> readFile' src
-            alwaysRerun
-
             srcs1 <- manifestSrcs
             srcs2 <- hdlSrcs
             cores <- ipCores
 
-            template <- case compileMustacheText (fromString src) s of
-                Left err -> fail (show err)
-                Right template -> return template
+            let template = $(TH.compileMustacheFile "template/xilinx-ise/project.tcl.mustache")
             let values = object . mconcat $
                          [ [ "project" .= T.pack projectName ]
                          , [ "top" .= T.pack topName ]
@@ -243,18 +237,12 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
         xpr %> \out -> vivadoBatch "project.tcl"
 
         outDir </> "project.tcl" %> \out -> do
-            let src = shakeDir </> "xilinx-vivado/project.tcl.mustache"
-            s <- TL.pack <$> readFile' src
-            alwaysRerun
-
             srcs1 <- manifestSrcs
             srcs2 <- hdlSrcs
             cores <- ipCores
             constrs <- constrSrcs
 
-            template <- case compileMustacheText (fromString src) s of
-                Left err -> fail (show err)
-                Right template -> return template
+            let template = $(TH.compileMustacheFile "template/xilinx-vivado/project.tcl.mustache")
             let values = object . mconcat $
                          [ [ "project" .= T.pack projectName ]
                          , [ "top" .= T.pack topName ]
@@ -276,13 +264,7 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
             writeFileChanged out . TL.unpack $ renderMustache template values
 
         outDir </> "build.tcl" %> \out -> do
-            let src = shakeDir </> "xilinx-vivado/project-build.tcl.mustache"
-            s <- TL.pack <$> readFile' src
-            alwaysRerun
-
-            template <- case compileMustacheText (fromString src) s of
-                Left err -> fail (show err)
-                Right template -> return template
+            let template = $(TH.compileMustacheFile "template/xilinx-vivado/project-build.tcl.mustache")
             let values = object . mconcat $
                          [ [ "project" .= T.pack projectName ]
                          , [ "top" .= T.pack topName ]
@@ -290,13 +272,7 @@ xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
             writeFileChanged out . TL.unpack $ renderMustache template values
 
         outDir </> "upload.tcl" %> \out -> do
-            let src = shakeDir </> "xilinx-vivado/upload.tcl.mustache"
-            s <- TL.pack <$> readFile' src
-            alwaysRerun
-
-            template <- case compileMustacheText (fromString src) s of
-                Left err -> fail (show err)
-                Right template -> return template
+            let template = $(TH.compileMustacheFile "template/xilinx-vivado/upload.tcl.mustache")
             let values = object . mconcat $
                          [ [ "project" .= T.pack projectName ]
                          , [ "top" .= T.pack topName ]

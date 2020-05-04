@@ -1,0 +1,31 @@
+name: clash-shake
+version: 0.0.0
+category: hardware
+
+dependencies:
+  - base
+  - shake
+
+  - clash-prelude
+  - clash-lib
+  - directory
+  - bytestring
+  - stache
+  - aeson
+  - mtl
+  - text
+  - containers
+  - unordered-containers
+
+source-dirs:
+  - src
+
+library:
+  exposed-modules:
+    - Clash.Shake
+
+extra-source-files:
+  - template/xilinx-ise/project.tcl.mustache
+  - template/xilinx-vivado/project-build.tcl.mustache
+  - template/xilinx-vivado/project.tcl.mustache
+  - template/xilinx-vivado/upload.tcl.mustache
