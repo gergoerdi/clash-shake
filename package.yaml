@@ -8,6 +8,11 @@ dependencies:
 
   - clash-prelude
   - clash-lib
+  - clash-ghc
+  - ghc-typelits-natnormalise
+  - ghc-typelits-extra
+  - ghc-typelits-knownnat
+
   - directory
   - bytestring
   - stache

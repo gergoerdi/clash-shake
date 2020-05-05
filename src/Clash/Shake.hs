@@ -17,6 +17,8 @@ import Development.Shake.FilePath
 import Development.Shake.Config
 import Development.Shake.Util
 
+import qualified Clash.Main as Clash
+
 import Control.Monad.Trans
 
 import Text.Mustache
@@ -93,7 +95,7 @@ data ClashProject = ClashProject
 type ClashRules = ReaderT ClashProject Rules
 
 data ClashKit = ClashKit
-    { clash :: String -> [String] -> Action ()
+    { clash :: [String] -> Action ()
     , manifestSrcs :: Action [FilePath]
     }
 
@@ -101,13 +103,11 @@ clashRules :: HDL -> FilePath -> Action () -> ClashRules ClashKit
 clashRules hdl srcDir extraGenerated = do
     ClashProject{..} <- ask
     let synDir = buildDir </> clashDir
-        rootDir = joinPath . map (const "..") . splitPath $ buildDir
-        srcDir' = rootDir </> srcDir
 
-    let clash cmd args = do
-            clashExe <- fromMaybe ("stack exec --") <$> getConfig "CLASH"
-            cmd_ (Cwd buildDir) clashExe
-              ([cmd, "-i" <> srcDir', "-outputdir", clashDir] <> clashFlags <> args)
+    let clash args = liftIO $ do
+            let args' = ["-i" <> srcDir, "-outputdir", synDir] <> clashFlags <> args
+            putStrLn $ "Clash.defaultMain " <> unwords args'
+            Clash.defaultMain args'
 
     let manifest = synDir </> hdlDir hdl </> clashModule </> clashTopName </> clashTopName <.> "manifest"
         manifestSrcs = do
@@ -123,11 +123,11 @@ clashRules hdl srcDir extraGenerated = do
           alwaysRerun
           need [ src ]
           extraGenerated
-          clash "clash" [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, rootDir </> src]
+          clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, src]
 
       phony "clashi" $ do
           let src = srcDir </> clashModule <.> "hs" -- TODO
-          clash "clashi" [rootDir </> src]
+          clash ["--interactive", src]
 
       phony "clash" $ do
           need [manifest]
