@@ -38,6 +38,7 @@ import Control.Monad (guard, msum)
 import Control.Monad.Reader
 import qualified Data.ByteString as BS
 import qualified System.Directory as Dir
+import Control.Exception
 
 import Clash.Driver.Types
 import Clash.Prelude (pack)
@@ -99,15 +100,23 @@ data ClashKit = ClashKit
     , manifestSrcs :: Action [FilePath]
     }
 
+withWorkingDirectory :: FilePath -> IO a -> IO a
+withWorkingDirectory dir act =
+    bracket Dir.getCurrentDirectory Dir.setCurrentDirectory $ \_ ->
+        Dir.setCurrentDirectory dir >> act
+
 clashRules :: HDL -> FilePath -> Action () -> ClashRules ClashKit
 clashRules hdl srcDir extraGenerated = do
     ClashProject{..} <- ask
     let synDir = buildDir </> clashDir
+        upBuildDir = foldr (</>) "." $ replicate (length $ splitPath buildDir) ".."
+        unBuildDir dir = upBuildDir </> dir
+        inBuildDir = withWorkingDirectory buildDir
 
     let clash args = liftIO $ do
-            let args' = ["-i" <> srcDir, "-outputdir", synDir] <> clashFlags <> args
+            let args' = ["-i" <> unBuildDir srcDir, "-outputdir", clashDir] <> clashFlags <> args
             putStrLn $ "Clash.defaultMain " <> unwords args'
-            Clash.defaultMain args'
+            inBuildDir $ Clash.defaultMain args'
 
     let manifest = synDir </> hdlDir hdl </> clashModule </> clashTopName </> clashTopName <.> "manifest"
         manifestSrcs = do
@@ -123,10 +132,10 @@ clashRules hdl srcDir extraGenerated = do
           alwaysRerun
           need [ src ]
           extraGenerated
-          clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, src]
+          clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, unBuildDir src]
 
       phony "clashi" $ do
-          let src = srcDir </> clashModule <.> "hs" -- TODO
+          let src = unBuildDir $ srcDir </> clashModule <.> "hs" -- TODO
           clash ["--interactive", src]
 
       phony "clash" $ do
