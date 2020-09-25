@@ -25,6 +25,7 @@ import Text.Mustache
 import qualified Text.Mustache.Compile.TH as TH
 import Data.Aeson
 import Data.String (fromString)
+import Data.Char (isUpper)
 
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
@@ -118,13 +119,15 @@ clashRules hdl srcDir extraGenerated = do
             putStrLn $ "Clash.defaultMain " <> unwords args'
             inBuildDir $ Clash.defaultMain args'
 
-    let manifest = synDir </> hdlDir hdl </> clashModule </> clashTopName </> clashTopName <.> "manifest"
+    let synModule = if isModuleName clashModule then clashModule else "Main"
+        synOut = synDir </> hdlDir hdl </> synModule </> clashTopName
+    let manifest = synOut </> clashTopName <.> "manifest"
         manifestSrcs = do
             need [manifest]
             Manifest{..} <- read <$> readFile' manifest
             let clashSrcs = map T.unpack componentNames <>
                             [ map toLower clashTopName <> "_types" | hdl == VHDL ]
-            return [ synDir </> hdlDir hdl </> clashModule </> clashTopName </> c <.> hdlExt hdl | c <- clashSrcs ]
+            return [ synOut </> c <.> hdlExt hdl | c <- clashSrcs ]
 
     lift $ do
       synDir </> hdlDir hdl <//> "*.manifest" %> \out -> do
@@ -335,3 +338,6 @@ binLines size bs = map (filter (/= '_') . show . pack) bytes
   where
     bytes = maybe id ensureSize size $ BS.unpack bs
     ensureSize size bs = take size $ bs <> repeat 0x00
+
+isModuleName :: String -> Bool
+isModuleName = isUpper . head . last . splitPath
