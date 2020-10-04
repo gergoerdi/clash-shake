@@ -1,8 +1,7 @@
 {-# LANGUAGE OverloadedStrings, RecordWildCards, ViewPatterns, TemplateHaskell #-}
 module Clash.Shake
-    ( ClashProject(..)
-    , HDL(..)
-    , clashShake
+    ( HDL(..)
+    , clashShakeMain, clashShake
     , ClashKit(..)
     , clashRules
     , XilinxTarget(..), papilioPro, papilioOne, nexysA750T
@@ -84,16 +83,7 @@ papilioOne = XilinxTarget "Spartan3E" "xc3s500e" "vq100" "-5"
 nexysA750T :: XilinxTarget
 nexysA750T = XilinxTarget "Artrix7" "xc7a50t" "icsg324" "-1L"
 
-data ClashProject = ClashProject
-    { projectName :: String
-    , clashModule :: String
-    , clashTopName :: String
-    , topName :: String
-    , clashFlags :: [String]
-    , buildDir :: FilePath
-    }
-
-type ClashRules = ReaderT ClashProject Rules
+type ClashRules = ReaderT FilePath Rules
 
 data ClashKit = ClashKit
     { clash :: [String] -> Action ()
@@ -105,45 +95,46 @@ withWorkingDirectory dir act =
     bracket Dir.getCurrentDirectory Dir.setCurrentDirectory $ \_ ->
         Dir.setCurrentDirectory dir >> act
 
-clashRules :: HDL -> FilePath -> FilePath -> [(String, String)] -> Action () -> ClashRules ClashKit
-clashRules hdl targetDir srcDir cpp extraGenerated = do
-    ClashProject{..} <- ask
+clashRules :: HDL -> FilePath -> FilePath -> [String] -> Action () -> ClashRules ClashKit
+clashRules hdl targetDir src clashFlags extraGenerated = do
+    buildDir <- ask
     let synDir = buildDir </> targetDir
         upBuildDir = foldr (</>) "." $ replicate (length $ splitPath buildDir) ".."
         unBuildDir dir = upBuildDir </> dir
         inBuildDir = withWorkingDirectory buildDir
 
-    let cppFlags = ["-D" <> flag <> "=" <> value | (flag, value) <- cpp]
-
     let clash args = liftIO $ do
-            let args' = ["-i" <> unBuildDir srcDir, "-outputdir", targetDir] <> cppFlags <> clashFlags <> args
+            let args' = ["-outputdir", targetDir] <> clashFlags <> args
             putStrLn $ "Clash.defaultMain " <> unwords args'
             inBuildDir $ Clash.defaultMain args'
 
-    let synModule = if isModuleName clashModule then clashModule else "Main"
+    -- TODO: ideally, Clash should return the manifest, or at least its file location...
+    let synModule = "Main" -- if isModuleName clashModule then clashModule else "Main"
+        clashTopName = "topEntity"
         synOut = synDir </> hdlDir hdl </> synModule </> clashTopName
-    let manifest = synOut </> clashTopName <.> "manifest"
-        manifestSrcs = do
-            need [manifest]
-            Manifest{..} <- read <$> readFile' manifest
+        manifest = do
+            let manifestFile = synOut </> clashTopName <.> "manifest"
+            need [manifestFile]
+            read <$> readFile' manifestFile
+
+    let manifestSrcs = do
+            Manifest{..} <- manifest
             let clashSrcs = map T.unpack componentNames <>
                             [ map toLower clashTopName <> "_types" | hdl == VHDL ]
             return [ synOut </> c <.> hdlExt hdl | c <- clashSrcs ]
 
     lift $ do
       synDir </> hdlDir hdl <//> "*.manifest" %> \out -> do
-          let src = srcDir </> clashModule <.> "hs" -- TODO
           alwaysRerun
           need [ src ]
           extraGenerated
           clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, unBuildDir src]
 
       phony "clashi" $ do
-          let src = unBuildDir $ srcDir </> clashModule <.> "hs" -- TODO
-          clash ["--interactive", src]
+          clash ["--interactive", unBuildDir src]
 
       phony "clash" $ do
-          need [manifest]
+          void manifest
 
       phony "clean-clash" $ do
           putNormal $ "Cleaning files in " ++ synDir
@@ -153,9 +144,10 @@ clashRules hdl targetDir srcDir cpp extraGenerated = do
     return kit
 
 
-xilinxISE :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> ClashRules ()
-xilinxISE fpga kit@ClashKit{..} targetDir srcDir = do
-    ClashProject{..} <- ask
+xilinxISE :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> String -> ClashRules ()
+xilinxISE fpga kit@ClashKit{..} targetDir srcDir topName = do
+    let projectName = topName
+    buildDir <- ask
     let outDir = buildDir </> targetDir
         rootDir = joinPath . map (const "..") . splitPath $ outDir
 
@@ -216,9 +208,10 @@ xilinxISE fpga kit@ClashKit{..} targetDir srcDir = do
               ]
             ise "xtclsh" [projectName <.> "tcl", "rebuild_project"]
 
-xilinxVivado :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> ClashRules ()
-xilinxVivado fpga kit@ClashKit{..} targetDir srcDir = do
-    ClashProject{..} <- ask
+xilinxVivado :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> String -> ClashRules ()
+xilinxVivado fpga kit@ClashKit{..} targetDir srcDir topName = do
+    let projectName = topName
+    buildDir <- ask
     let outDir = buildDir </> targetDir
         projectDir = outDir </> projectName
         xpr = projectDir </> projectName <.> "xpr"
@@ -257,7 +250,8 @@ xilinxVivado fpga kit@ClashKit{..} targetDir srcDir = do
 
             let template = $(TH.compileMustacheFile "template/xilinx-vivado/project.tcl.mustache")
             let values = object . mconcat $
-                         [ [ "project" .= T.pack projectName ]
+                         [ [ "rootDir" .= T.pack rootDir]
+                         , [ "project" .= T.pack projectName ]
                          , [ "top" .= T.pack topName ]
                          , targetMustache fpga
                          , [ "board" .= T.pack "digilentinc.com:nexys-a7-50t:part0:1.0" ] -- TODO
@@ -308,8 +302,8 @@ xilinxVivado fpga kit@ClashKit{..} targetDir srcDir = do
             need [projectDir </> projectName <.> "runs" </> "impl_1" </> topName <.> "bit"]
             vivadoBatch "upload.tcl"
 
-clashShake :: ClashProject -> ClashRules () -> IO ()
-clashShake proj@ClashProject{..} rules = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
+clashShakeMain :: FilePath -> Rules () -> IO ()
+clashShakeMain buildDir rules = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
     cfg <- do
         haveConfig <- liftIO $ Dir.doesFileExist "build.mk"
         if haveConfig then do
@@ -318,15 +312,19 @@ clashShake proj@ClashProject{..} rules = shakeArgs shakeOptions{ shakeFiles = bu
           else do
             usingConfig mempty
             return mempty
-    runReaderT rules proj
+
+    rules
+
+    forM_ (HM.lookup "TARGET" cfg) $ \target ->
+      want [target </> "bitfile"]
+
+clashShake :: FilePath -> ClashRules () -> IO ()
+clashShake buildDir rules = clashShakeMain buildDir $ do
+    runReaderT rules buildDir
 
     phony "clean" $ do
         putNormal $ "Cleaning files in " ++ buildDir
         removeFilesAfter buildDir [ "//*" ]
-
-    want $ case HM.lookup "TARGET" cfg of
-        Nothing -> ["clash"]
-        Just target -> [target </> "bitfile"]
 
 binImage :: Maybe Int -> FilePath -> FilePath -> Action ()
 binImage size src out = do
