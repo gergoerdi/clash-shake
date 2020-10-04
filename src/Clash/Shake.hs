@@ -98,8 +98,8 @@ withWorkingDirectory dir act =
     bracket Dir.getCurrentDirectory Dir.setCurrentDirectory $ \_ ->
         Dir.setCurrentDirectory dir >> act
 
-clashRules :: HDL -> FilePath -> FilePath -> [String] -> Action () -> ClashRules ClashKit
-clashRules hdl targetDir src clashFlags extraGenerated = do
+clashRules :: HDL -> FilePath -> FilePath -> [FilePath] -> [String] -> Action () -> ClashRules ClashKit
+clashRules hdl targetDir src srcDirs clashFlags extraGenerated = do
     buildDir <- ask
     let synDir = buildDir </> targetDir
         upBuildDir = foldr (</>) "." $ replicate (length $ splitPath buildDir) ".."
@@ -107,7 +107,8 @@ clashRules hdl targetDir src clashFlags extraGenerated = do
         inBuildDir = withWorkingDirectory buildDir
 
     let clash args = liftIO $ do
-            let args' = ["-outputdir", targetDir] <> clashFlags <> args
+            let srcFlags = ["-i" <> unBuildDir srcDir | srcDir <- srcDirs]
+            let args' = ["-outputdir", targetDir] <> clashFlags <> srcFlags <> args
             putStrLn $ "Clash.defaultMain " <> unwords args'
             inBuildDir $ Clash.defaultMain args'
 
