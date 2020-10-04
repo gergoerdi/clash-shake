@@ -91,7 +91,6 @@ data ClashProject = ClashProject
     , topName :: String
     , clashFlags :: [String]
     , buildDir :: FilePath
-    , clashDir :: FilePath
     }
 
 type ClashRules = ReaderT ClashProject Rules
@@ -106,16 +105,18 @@ withWorkingDirectory dir act =
     bracket Dir.getCurrentDirectory Dir.setCurrentDirectory $ \_ ->
         Dir.setCurrentDirectory dir >> act
 
-clashRules :: HDL -> FilePath -> Action () -> ClashRules ClashKit
-clashRules hdl srcDir extraGenerated = do
+clashRules :: HDL -> FilePath -> FilePath -> [(String, String)] -> Action () -> ClashRules ClashKit
+clashRules hdl targetDir srcDir cpp extraGenerated = do
     ClashProject{..} <- ask
-    let synDir = buildDir </> clashDir
+    let synDir = buildDir </> targetDir
         upBuildDir = foldr (</>) "." $ replicate (length $ splitPath buildDir) ".."
         unBuildDir dir = upBuildDir </> dir
         inBuildDir = withWorkingDirectory buildDir
 
+    let cppFlags = ["-D" <> flag <> "=" <> value | (flag, value) <- cpp]
+
     let clash args = liftIO $ do
-            let args' = ["-i" <> unBuildDir srcDir, "-outputdir", clashDir] <> clashFlags <> args
+            let args' = ["-i" <> unBuildDir srcDir, "-outputdir", targetDir] <> cppFlags <> clashFlags <> args
             putStrLn $ "Clash.defaultMain " <> unwords args'
             inBuildDir $ Clash.defaultMain args'
 
@@ -152,8 +153,8 @@ clashRules hdl srcDir extraGenerated = do
     return kit
 
 
-xilinxISE :: ClashKit -> XilinxTarget -> FilePath -> FilePath -> ClashRules ()
-xilinxISE kit@ClashKit{..} fpga srcDir targetDir = do
+xilinxISE :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> ClashRules ()
+xilinxISE fpga kit@ClashKit{..} targetDir srcDir = do
     ClashProject{..} <- ask
     let outDir = buildDir </> targetDir
         rootDir = joinPath . map (const "..") . splitPath $ outDir
@@ -215,8 +216,8 @@ xilinxISE kit@ClashKit{..} fpga srcDir targetDir = do
               ]
             ise "xtclsh" [projectName <.> "tcl", "rebuild_project"]
 
-xilinxVivado :: ClashKit -> XilinxTarget -> FilePath -> FilePath -> ClashRules ()
-xilinxVivado kit@ClashKit{..} fpga srcDir targetDir = do
+xilinxVivado :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> ClashRules ()
+xilinxVivado fpga kit@ClashKit{..} targetDir srcDir = do
     ClashProject{..} <- ask
     let outDir = buildDir </> targetDir
         projectDir = outDir </> projectName
