@@ -2,8 +2,10 @@
 module Clash.Shake
     ( HDL(..)
     , clashShakeMain, clashShake
+    , nestedPhony
     , ClashKit(..)
     , clashRules
+    , SynthKit(..)
     , XilinxTarget(..), papilioPro, papilioOne, nexysA750T
     , xilinxISE
     , xilinxVivado
@@ -87,6 +89,7 @@ type ClashRules = ReaderT FilePath Rules
 
 data ClashKit = ClashKit
     { clash :: [String] -> Action ()
+    , unBuildDir :: FilePath -> FilePath
     , manifestSrcs :: Action [FilePath]
     }
 
@@ -130,21 +133,21 @@ clashRules hdl targetDir src clashFlags extraGenerated = do
           extraGenerated
           clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, unBuildDir src]
 
-      phony "clashi" $ do
-          clash ["--interactive", unBuildDir src]
-
-      phony "clash" $ do
-          void manifest
-
-      phony "clean-clash" $ do
-          putNormal $ "Cleaning files in " ++ synDir
-          removeFilesAfter synDir [ "//*" ]
-
     let kit = ClashKit{..}
     return kit
 
+data SynthKit = SynthKit
+    { bitfile :: FilePath
+    , phonies :: [(String, Action ())]
+    }
 
-xilinxISE :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> String -> ClashRules ()
+nestedPhony :: String -> String -> Action () -> Rules ()
+nestedPhony root name = phony (root </> name)
+
+(|>) :: String -> Action () -> (String, Action ())
+(|>) = (,)
+
+xilinxISE :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> String -> ClashRules SynthKit
 xilinxISE fpga kit@ClashKit{..} targetDir srcDir topName = do
     let projectName = topName
     buildDir <- ask
@@ -189,13 +192,6 @@ xilinxISE fpga kit@ClashKit{..} targetDir srcDir topName = do
             let src = srcDir </> makeRelative outDir out
             copyFileChanged src out
 
-        phony (takeBaseName targetDir </> "ise") $ do
-            need [outDir </> projectName <.> "tcl"]
-            ise "ise" [outDir </> projectName <.> "tcl"]
-
-        phony (takeBaseName targetDir </> "bitfile") $ do
-            need [outDir </> topName <.> "bit"]
-
         outDir </> topName <.> "bit" %> \_out -> do
             srcs1 <- manifestSrcs
             srcs2 <- hdlSrcs
@@ -208,7 +204,16 @@ xilinxISE fpga kit@ClashKit{..} targetDir srcDir topName = do
               ]
             ise "xtclsh" [projectName <.> "tcl", "rebuild_project"]
 
-xilinxVivado :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> String -> ClashRules ()
+    return $ SynthKit
+        { bitfile = outDir </> topName <.> "bit"
+        , phonies =
+            [ "ise" |> do
+                   need [outDir </> projectName <.> "tcl"]
+                   ise "ise" [outDir </> projectName <.> "tcl"]
+            ]
+        }
+
+xilinxVivado :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> String -> ClashRules SynthKit
 xilinxVivado fpga kit@ClashKit{..} targetDir srcDir topName = do
     let projectName = topName
     buildDir <- ask
@@ -287,20 +292,21 @@ xilinxVivado fpga kit@ClashKit{..} targetDir srcDir topName = do
                          ]
             writeFileChanged out . TL.unpack $ renderMustache template values
 
-        phony (takeBaseName targetDir </> "vivado") $ do
-            need [xpr]
-            vivado "vivado" [xpr]
-
-        phony (takeBaseName targetDir </> "bitfile") $ do
-            need [projectDir </> projectName <.> "runs" </> "impl_1" </> topName <.> "bit"]
-
         projectDir </> projectName <.> "runs" </> "impl_1" </> topName <.> "bit" %> \out -> do
             need [xpr]
             vivadoBatch "build.tcl"
 
-        phony (takeBaseName targetDir </> "upload") $ do
-            need [projectDir </> projectName <.> "runs" </> "impl_1" </> topName <.> "bit"]
-            vivadoBatch "upload.tcl"
+    return SynthKit
+        { bitfile = projectDir </> projectName <.> "runs" </> "impl_1" </> topName <.> "bit"
+        , phonies =
+            [ "vivado" |> do
+                   need [xpr]
+                   vivado "vivado" [xpr]
+            , "upload" |> do
+                   need [projectDir </> projectName <.> "runs" </> "impl_1" </> topName <.> "bit"]
+                   vivadoBatch "upload.tcl"
+            ]
+        }
 
 clashShakeMain :: FilePath -> Rules () -> IO ()
 clashShakeMain buildDir rules = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
