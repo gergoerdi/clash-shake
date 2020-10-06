@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings, RecordWildCards, ViewPatterns, TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies, GeneralizedNewtypeDeriving #-}
 module Clash.Shake
     ( HDL(..)
     , clashShakeMain, clashShake
@@ -27,6 +28,9 @@ import qualified Text.Mustache.Compile.TH as TH
 import Data.Aeson
 import Data.String (fromString)
 import Data.Char (isUpper)
+import Data.Binary
+import Control.DeepSeq
+import Data.Hashable
 
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
@@ -98,6 +102,9 @@ withWorkingDirectory dir act =
     bracket Dir.getCurrentDirectory Dir.setCurrentDirectory $ \_ ->
         Dir.setCurrentDirectory dir >> act
 
+newtype ClashSources = ClashSources FilePath deriving (Eq, Show, Binary, NFData, Hashable)
+type instance RuleResult ClashSources = [FilePath]
+
 clashRules :: HDL -> FilePath -> FilePath -> [FilePath] -> [String] -> Action () -> ClashRules ClashKit
 clashRules hdl targetDir src srcDirs clashFlags extraGenerated = do
     buildDir <- ask
@@ -128,11 +135,16 @@ clashRules hdl targetDir src srcDirs clashFlags extraGenerated = do
             return [ synOut </> c <.> hdlExt hdl | c <- clashSrcs ]
 
     lift $ do
-      synDir </> hdlDir hdl <//> "*.manifest" %> \out -> do
-          alwaysRerun
-          need [ src ]
-          extraGenerated
-          clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, unBuildDir src]
+        synDir </> "ghc-deps.make" %> \out -> do
+            alwaysRerun
+            clash ["-M", "-dep-suffix", "", "-dep-makefile", unBuildDir out, unBuildDir src]
+            liftIO $ removeFiles targetDir [out <.> "bak"]
+
+        synDir </> hdlDir hdl <//> "*.manifest" %> \out -> do
+            srcs <- askOracle $ ClashSources synDir
+            need [buildDir </> src | src <- srcs]
+            extraGenerated
+            clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, unBuildDir src]
 
     let kit = ClashKit{..}
     return kit
@@ -320,6 +332,19 @@ clashShakeMain buildDir rules = shakeArgs shakeOptions{ shakeFiles = buildDir } 
             usingConfig mempty
             return mempty
 
+    addOracleCache $ \(ClashSources synDir) -> do
+        let depFile = synDir </> "ghc-deps.make"
+        need [depFile]
+        deps <- parseMakefile <$> liftIO (readFile depFile)
+        let isHsSource fn
+                | ext `elem` [".hi"] = False
+                | ext `elem` [".hs", ".lhs"] = True
+                | otherwise = error $ "Unrecognized source file: " <> fn
+              where
+                ext = takeExtension fn
+            hsDeps = [fn | (_, fns) <- deps, fn <- fns, isHsSource fn]
+        return hsDeps
+
     rules
 
     forM_ (HM.lookup "TARGET" cfg) $ \target ->
@@ -327,11 +352,11 @@ clashShakeMain buildDir rules = shakeArgs shakeOptions{ shakeFiles = buildDir } 
 
 clashShake :: FilePath -> ClashRules () -> IO ()
 clashShake buildDir rules = clashShakeMain buildDir $ do
-    runReaderT rules buildDir
-
     phony "clean" $ do
         putNormal $ "Cleaning files in " ++ buildDir
         removeFilesAfter buildDir [ "//*" ]
+
+    runReaderT rules buildDir
 
 binImage :: Maybe Int -> FilePath -> FilePath -> Action ()
 binImage size src out = do

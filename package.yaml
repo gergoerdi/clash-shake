@@ -21,6 +21,9 @@ dependencies:
   - text
   - containers
   - unordered-containers
+  - hashable
+  - deepseq
+  - binary
 
 source-dirs:
   - src
