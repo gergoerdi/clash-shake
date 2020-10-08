@@ -101,9 +101,6 @@ withWorkingDirectory dir act =
     bracket Dir.getCurrentDirectory Dir.setCurrentDirectory $ \_ ->
         Dir.setCurrentDirectory dir >> act
 
-newtype ClashSources = ClashSources FilePath deriving (Eq, Show, Binary, NFData, Hashable)
-type instance RuleResult ClashSources = [FilePath]
-
 clashRules :: FilePath -> HDL -> FilePath -> FilePath -> [FilePath] -> [String] -> Action () -> Rules ClashKit
 clashRules buildDir hdl targetDir src srcDirs clashFlags extraGenerated = do
     let synDir = buildDir </> targetDir
@@ -132,13 +129,32 @@ clashRules buildDir hdl targetDir src srcDirs clashFlags extraGenerated = do
                             [ map toLower clashTopName <> "_types" | hdl == VHDL ]
             return [ synOut </> c <.> hdlExt hdl | c <- clashSrcs ]
 
-    synDir </> "ghc-deps.make" %> \out -> do
-        alwaysRerun
-        clash ["-M", "-dep-suffix", "", "-dep-makefile", unBuildDir out, unBuildDir src]
-        liftIO $ removeFiles targetDir [out <.> "bak"]
+    getSrcs <- do
+        synDir </> "ghc-deps.make" %> \out -> do
+            alwaysRerun
+            -- By writing to a temp file and using `copyFileChanged`,
+            -- we avoid spurious reruns
+            -- (https://stackoverflow.com/a/64277431/477476)
+            let tmp = out <.> "tmp"
+            clash ["-M", "-dep-suffix", "", "-dep-makefile", unBuildDir tmp, unBuildDir src]
+            copyFileChanged tmp out
+            liftIO $ removeFiles "." [tmp, tmp <.> "bak"]
+
+        return $ do
+            let depFile = synDir </> "ghc-deps.make"
+            need [depFile]
+            deps <- parseMakefile <$> liftIO (readFile depFile)
+            let isHsSource fn
+                  | ext `elem` [".hi"] = False
+                  | ext `elem` [".hs", ".lhs"] = True
+                  | otherwise = error $ "Unrecognized source file: " <> fn
+                  where
+                    ext = takeExtension fn
+                hsDeps = [fn | (_, fns) <- deps, fn <- fns, isHsSource fn]
+            return hsDeps
 
     synDir </> hdlDir hdl <//> "*.manifest" %> \out -> do
-        srcs <- askOracle $ ClashSources synDir
+        srcs <- getSrcs
         need [buildDir </> src | src <- srcs]
         extraGenerated
         clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, unBuildDir src]
@@ -323,19 +339,6 @@ clashShakeMain buildDir rules = shakeArgs shakeOptions{ shakeFiles = buildDir } 
           else do
             usingConfig mempty
             return mempty
-
-    addOracleCache $ \(ClashSources synDir) -> do
-        let depFile = synDir </> "ghc-deps.make"
-        need [depFile]
-        deps <- parseMakefile <$> liftIO (readFile depFile)
-        let isHsSource fn
-                | ext `elem` [".hi"] = False
-                | ext `elem` [".hs", ".lhs"] = True
-                | otherwise = error $ "Unrecognized source file: " <> fn
-              where
-                ext = takeExtension fn
-            hsDeps = [fn | (_, fns) <- deps, fn <- fns, isHsSource fn]
-        return hsDeps
 
     rules
 
