@@ -89,10 +89,9 @@ papilioOne = XilinxTarget "Spartan3E" "xc3s500e" "vq100" "-5"
 nexysA750T :: XilinxTarget
 nexysA750T = XilinxTarget "Artrix7" "xc7a50t" "icsg324" "-1L"
 
-type ClashRules = ReaderT FilePath Rules
-
 data ClashKit = ClashKit
     { clash :: [String] -> Action ()
+    , buildDir :: FilePath
     , unBuildDir :: FilePath -> FilePath
     , manifestSrcs :: Action [FilePath]
     }
@@ -105,9 +104,8 @@ withWorkingDirectory dir act =
 newtype ClashSources = ClashSources FilePath deriving (Eq, Show, Binary, NFData, Hashable)
 type instance RuleResult ClashSources = [FilePath]
 
-clashRules :: HDL -> FilePath -> FilePath -> [FilePath] -> [String] -> Action () -> ClashRules ClashKit
-clashRules hdl targetDir src srcDirs clashFlags extraGenerated = do
-    buildDir <- ask
+clashRules :: FilePath -> HDL -> FilePath -> FilePath -> [FilePath] -> [String] -> Action () -> Rules ClashKit
+clashRules buildDir hdl targetDir src srcDirs clashFlags extraGenerated = do
     let synDir = buildDir </> targetDir
         upBuildDir = foldr (</>) "." $ replicate (length $ splitPath buildDir) ".."
         unBuildDir dir = upBuildDir </> dir
@@ -134,20 +132,18 @@ clashRules hdl targetDir src srcDirs clashFlags extraGenerated = do
                             [ map toLower clashTopName <> "_types" | hdl == VHDL ]
             return [ synOut </> c <.> hdlExt hdl | c <- clashSrcs ]
 
-    lift $ do
-        synDir </> "ghc-deps.make" %> \out -> do
-            alwaysRerun
-            clash ["-M", "-dep-suffix", "", "-dep-makefile", unBuildDir out, unBuildDir src]
-            liftIO $ removeFiles targetDir [out <.> "bak"]
+    synDir </> "ghc-deps.make" %> \out -> do
+        alwaysRerun
+        clash ["-M", "-dep-suffix", "", "-dep-makefile", unBuildDir out, unBuildDir src]
+        liftIO $ removeFiles targetDir [out <.> "bak"]
 
-        synDir </> hdlDir hdl <//> "*.manifest" %> \out -> do
-            srcs <- askOracle $ ClashSources synDir
-            need [buildDir </> src | src <- srcs]
-            extraGenerated
-            clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, unBuildDir src]
+    synDir </> hdlDir hdl <//> "*.manifest" %> \out -> do
+        srcs <- askOracle $ ClashSources synDir
+        need [buildDir </> src | src <- srcs]
+        extraGenerated
+        clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, unBuildDir src]
 
-    let kit = ClashKit{..}
-    return kit
+    return ClashKit{..}
 
 data SynthKit = SynthKit
     { bitfile :: FilePath
@@ -160,11 +156,10 @@ nestedPhony root name = phony (root </> name)
 (|>) :: String -> Action () -> (String, Action ())
 (|>) = (,)
 
-xilinxISE :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> String -> ClashRules SynthKit
+xilinxISE :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
 xilinxISE fpga kit@ClashKit{..} targetDir srcDir topName = do
     let projectName = topName
-    buildDir <- ask
-    let outDir = buildDir </> targetDir
+        outDir = buildDir </> targetDir
         rootDir = joinPath . map (const "..") . splitPath $ outDir
 
     let ise tool args = do
@@ -180,42 +175,41 @@ xilinxISE fpga kit@ClashKit{..} targetDir srcDir topName = do
         hdlSrcs = getFiles "src-hdl" ["*.vhdl", "*.v", "*.ucf" ]
         ipCores = getFiles "ipcore_dir" ["*.xco", "*.xaw"]
 
-    lift $ do
-        outDir <//> "*.tcl" %> \out -> do
-            srcs1 <- manifestSrcs
-            srcs2 <- hdlSrcs
-            cores <- ipCores
+    outDir <//> "*.tcl" %> \out -> do
+        srcs1 <- manifestSrcs
+        srcs2 <- hdlSrcs
+        cores <- ipCores
 
-            let template = $(TH.compileMustacheFile "template/xilinx-ise/project.tcl.mustache")
-            let values = object . mconcat $
-                         [ [ "project" .= T.pack projectName ]
-                         , [ "top" .= T.pack topName ]
-                         , targetMustache fpga
-                         , [ "srcs" .= mconcat
-                             [ [ object [ "fileName" .= (rootDir </> src) ] | src <- srcs1 ]
-                             , [ object [ "fileName" .= (rootDir </> srcDir </> src) ] | src <- srcs2 ]
-                             , [ object [ "fileName" .= core ] | core <- cores ]
-                             ]
-                           ]
-                         , [ "ipcores" .= [ object [ "name" .= takeBaseName core ] | core <- cores ] ]
+        let template = $(TH.compileMustacheFile "template/xilinx-ise/project.tcl.mustache")
+        let values = object . mconcat $
+                     [ [ "project" .= T.pack projectName ]
+                     , [ "top" .= T.pack topName ]
+                     , targetMustache fpga
+                     , [ "srcs" .= mconcat
+                         [ [ object [ "fileName" .= (rootDir </> src) ] | src <- srcs1 ]
+                         , [ object [ "fileName" .= (rootDir </> srcDir </> src) ] | src <- srcs2 ]
+                         , [ object [ "fileName" .= core ] | core <- cores ]
                          ]
-            writeFileChanged out . TL.unpack $ renderMustache template values
+                       ]
+                     , [ "ipcores" .= [ object [ "name" .= takeBaseName core ] | core <- cores ] ]
+                     ]
+        writeFileChanged out . TL.unpack $ renderMustache template values
 
-        outDir </> "ipcore_dir" <//> "*" %> \out -> do
-            let src = srcDir </> makeRelative outDir out
-            copyFileChanged src out
+    outDir </> "ipcore_dir" <//> "*" %> \out -> do
+        let src = srcDir </> makeRelative outDir out
+        copyFileChanged src out
 
-        outDir </> topName <.> "bit" %> \_out -> do
-            srcs1 <- manifestSrcs
-            srcs2 <- hdlSrcs
-            cores <- ipCores
-            need $ mconcat
-              [ [ outDir </> projectName <.> "tcl" ]
-              , [ src | src <- srcs1 ]
-              , [ srcDir </> src | src <- srcs2 ]
-              , [ outDir </> core | core <- cores ]
-              ]
-            ise "xtclsh" [projectName <.> "tcl", "rebuild_project"]
+    outDir </> topName <.> "bit" %> \_out -> do
+        srcs1 <- manifestSrcs
+        srcs2 <- hdlSrcs
+        cores <- ipCores
+        need $ mconcat
+            [ [ outDir </> projectName <.> "tcl" ]
+            , [ src | src <- srcs1 ]
+            , [ srcDir </> src | src <- srcs2 ]
+            , [ outDir </> core | core <- cores ]
+            ]
+        ise "xtclsh" [projectName <.> "tcl", "rebuild_project"]
 
     return $ SynthKit
         { bitfile = outDir </> topName <.> "bit"
@@ -226,11 +220,10 @@ xilinxISE fpga kit@ClashKit{..} targetDir srcDir topName = do
             ]
         }
 
-xilinxVivado :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> String -> ClashRules SynthKit
+xilinxVivado :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
 xilinxVivado fpga kit@ClashKit{..} targetDir srcDir topName = do
     let projectName = topName
-    buildDir <- ask
-    let outDir = buildDir </> targetDir
+        outDir = buildDir </> targetDir
         projectDir = outDir </> projectName
         xpr = projectDir </> projectName <.> "xpr"
         rootDir = joinPath . map (const "..") . splitPath $ outDir
@@ -257,57 +250,56 @@ xilinxVivado fpga kit@ClashKit{..} targetDir srcDir topName = do
         constrSrcs = getFiles "src-hdl" ["*.xdc" ]
         ipCores = getFiles "ip" ["*.xci"]
 
-    lift $ do
-        xpr %> \out -> vivadoBatch "project.tcl"
+    xpr %> \out -> vivadoBatch "project.tcl"
 
-        outDir </> "project.tcl" %> \out -> do
-            srcs1 <- manifestSrcs
-            srcs2 <- hdlSrcs
-            cores <- ipCores
-            constrs <- constrSrcs
+    outDir </> "project.tcl" %> \out -> do
+        srcs1 <- manifestSrcs
+        srcs2 <- hdlSrcs
+        cores <- ipCores
+        constrs <- constrSrcs
 
-            let template = $(TH.compileMustacheFile "template/xilinx-vivado/project.tcl.mustache")
-            let values = object . mconcat $
-                         [ [ "rootDir" .= T.pack rootDir]
-                         , [ "project" .= T.pack projectName ]
-                         , [ "top" .= T.pack topName ]
-                         , targetMustache fpga
-                         , [ "board" .= T.pack "digilentinc.com:nexys-a7-50t:part0:1.0" ] -- TODO
-                         , [ "srcs" .= mconcat
-                             [ [ object [ "fileName" .= src ] | src <- srcs1 ]
-                             , [ object [ "fileName" .= (srcDir </> src) ] | src <- srcs2 ]
-                             ]
-                           ]
-                         , [ "coreSrcs" .= object
-                             [ "nonempty" .= not (null cores)
-                             , "items" .= [ object [ "fileName" .= (srcDir </> core) ] | core <- cores ]
-                             ]
-                           ]
-                         , [ "ipcores" .= [ object [ "name" .= takeBaseName core ] | core <- cores ] ]
-                         , [ "constraintSrcs" .= [ object [ "fileName" .= (srcDir </> src) ] | src <- constrs ] ]
+        let template = $(TH.compileMustacheFile "template/xilinx-vivado/project.tcl.mustache")
+        let values = object . mconcat $
+                     [ [ "rootDir" .= T.pack rootDir]
+                     , [ "project" .= T.pack projectName ]
+                     , [ "top" .= T.pack topName ]
+                     , targetMustache fpga
+                     , [ "board" .= T.pack "digilentinc.com:nexys-a7-50t:part0:1.0" ] -- TODO
+                     , [ "srcs" .= mconcat
+                         [ [ object [ "fileName" .= src ] | src <- srcs1 ]
+                         , [ object [ "fileName" .= (srcDir </> src) ] | src <- srcs2 ]
                          ]
-            writeFileChanged out . TL.unpack $ renderMustache template values
-
-        outDir </> "build.tcl" %> \out -> do
-            let template = $(TH.compileMustacheFile "template/xilinx-vivado/project-build.tcl.mustache")
-            let values = object . mconcat $
-                         [ [ "project" .= T.pack projectName ]
-                         , [ "top" .= T.pack topName ]
+                       ]
+                     , [ "coreSrcs" .= object
+                         [ "nonempty" .= not (null cores)
+                         , "items" .= [ object [ "fileName" .= (srcDir </> core) ] | core <- cores ]
                          ]
-            writeFileChanged out . TL.unpack $ renderMustache template values
+                       ]
+                     , [ "ipcores" .= [ object [ "name" .= takeBaseName core ] | core <- cores ] ]
+                     , [ "constraintSrcs" .= [ object [ "fileName" .= (srcDir </> src) ] | src <- constrs ] ]
+                     ]
+        writeFileChanged out . TL.unpack $ renderMustache template values
 
-        outDir </> "upload.tcl" %> \out -> do
-            let template = $(TH.compileMustacheFile "template/xilinx-vivado/upload.tcl.mustache")
-            let values = object . mconcat $
-                         [ [ "project" .= T.pack projectName ]
-                         , [ "top" .= T.pack topName ]
-                         , targetMustache fpga
-                         ]
-            writeFileChanged out . TL.unpack $ renderMustache template values
+    outDir </> "build.tcl" %> \out -> do
+        let template = $(TH.compileMustacheFile "template/xilinx-vivado/project-build.tcl.mustache")
+        let values = object . mconcat $
+                     [ [ "project" .= T.pack projectName ]
+                     , [ "top" .= T.pack topName ]
+                     ]
+        writeFileChanged out . TL.unpack $ renderMustache template values
 
-        projectDir </> projectName <.> "runs" </> "impl_1" </> topName <.> "bit" %> \out -> do
-            need [xpr]
-            vivadoBatch "build.tcl"
+    outDir </> "upload.tcl" %> \out -> do
+        let template = $(TH.compileMustacheFile "template/xilinx-vivado/upload.tcl.mustache")
+        let values = object . mconcat $
+                     [ [ "project" .= T.pack projectName ]
+                     , [ "top" .= T.pack topName ]
+                     , targetMustache fpga
+                     ]
+        writeFileChanged out . TL.unpack $ renderMustache template values
+
+    projectDir </> projectName <.> "runs" </> "impl_1" </> topName <.> "bit" %> \out -> do
+        need [xpr]
+        vivadoBatch "build.tcl"
 
     return SynthKit
         { bitfile = projectDir </> projectName <.> "runs" </> "impl_1" </> topName <.> "bit"
@@ -350,13 +342,12 @@ clashShakeMain buildDir rules = shakeArgs shakeOptions{ shakeFiles = buildDir } 
     forM_ (HM.lookup "TARGET" cfg) $ \target ->
       want [target </> "bitfile"]
 
-clashShake :: FilePath -> ClashRules () -> IO ()
+clashShake :: FilePath -> Rules () -> IO ()
 clashShake buildDir rules = clashShakeMain buildDir $ do
     phony "clean" $ do
         putNormal $ "Cleaning files in " ++ buildDir
         removeFilesAfter buildDir [ "//*" ]
-
-    runReaderT rules buildDir
+    rules
 
 binImage :: Maybe Int -> FilePath -> FilePath -> Action ()
 binImage size src out = do
