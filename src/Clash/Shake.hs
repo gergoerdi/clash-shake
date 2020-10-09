@@ -101,8 +101,8 @@ withWorkingDirectory dir act =
     bracket Dir.getCurrentDirectory Dir.setCurrentDirectory $ \_ ->
         Dir.setCurrentDirectory dir >> act
 
-clashRules :: FilePath -> HDL -> FilePath -> FilePath -> [FilePath] -> [String] -> Action () -> Rules ClashKit
-clashRules buildDir hdl targetDir src srcDirs clashFlags extraGenerated = do
+clashRules :: FilePath -> HDL -> FilePath -> [FilePath] -> FilePath -> [String] -> Action () -> Rules ClashKit
+clashRules buildDir hdl targetDir srcDirs src clashFlags extraGenerated = do
     let synDir = buildDir </> targetDir
         upBuildDir = foldr (</>) "." $ replicate (length $ splitPath buildDir) ".."
         unBuildDir dir = upBuildDir </> dir
