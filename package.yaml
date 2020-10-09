@@ -24,6 +24,7 @@ dependencies:
   - hashable
   - deepseq
   - binary
+  - split
 
 source-dirs:
   - src

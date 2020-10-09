@@ -31,6 +31,7 @@ import Data.Char (isUpper)
 import Data.Binary
 import Control.DeepSeq
 import Data.Hashable
+import Data.List.Split
 
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
@@ -115,7 +116,10 @@ clashRules buildDir hdl targetDir srcDirs src clashFlags extraGenerated = do
             inBuildDir $ Clash.defaultMain args'
 
     -- TODO: ideally, Clash should return the manifest, or at least its file location...
-    let synModule = "Main" -- if isModuleName clashModule then clashModule else "Main"
+    let (synModule, srcArg)
+          | isModuleName src = (last . splitOn "." $ src, src)
+          | otherwise = ("Main", unBuildDir src)
+
         clashTopName = "topEntity"
         synOut = synDir </> hdlDir hdl </> synModule </> clashTopName
         manifest = do
@@ -136,7 +140,7 @@ clashRules buildDir hdl targetDir srcDirs src clashFlags extraGenerated = do
             -- we avoid spurious reruns
             -- (https://stackoverflow.com/a/64277431/477476)
             let tmp = out <.> "tmp"
-            clash ["-M", "-dep-suffix", "", "-dep-makefile", unBuildDir tmp, unBuildDir src]
+            clash ["-M", "-dep-suffix", "", "-dep-makefile", unBuildDir tmp, srcArg]
             copyFileChanged tmp out
             liftIO $ removeFiles "." [tmp, tmp <.> "bak"]
 
@@ -157,7 +161,7 @@ clashRules buildDir hdl targetDir srcDirs src clashFlags extraGenerated = do
         srcs <- getSrcs
         need [buildDir </> src | src <- srcs]
         extraGenerated
-        clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, unBuildDir src]
+        clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, srcArg]
 
     return ClashKit{..}
 
@@ -365,4 +369,4 @@ binLines size bs = map (filter (/= '_') . show . pack) bytes
     ensureSize size bs = take size $ bs <> repeat 0x00
 
 isModuleName :: String -> Bool
-isModuleName = isUpper . head . last . splitPath
+isModuleName = all (isUpper . head) . splitOn "."
