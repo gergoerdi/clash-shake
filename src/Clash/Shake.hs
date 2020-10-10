@@ -94,10 +94,10 @@ clashRules buildDir targetDir hdl srcDirs src clashFlags extraGenerated = do
             -- By writing to a temp file and using `copyFileChanged`,
             -- we avoid spurious reruns
             -- (https://stackoverflow.com/a/64277431/477476)
-            let tmp = out <.> "tmp"
-            clash ["-M", "-dep-suffix", "", "-dep-makefile", unBuildDir tmp, srcArg]
-            copyFileChanged tmp out
-            liftIO $ removeFiles "." [tmp, tmp <.> "bak"]
+            withTempFileWithin synDir $ \tmp -> do
+                clash ["-M", "-dep-suffix", "", "-dep-makefile", unBuildDir tmp, srcArg]
+                liftIO $ removeFiles synDir [takeBaseName tmp <.> "bak"]
+                copyFileChanged tmp out
 
         return $ do
             let depFile = synDir </> "ghc-deps.make"
