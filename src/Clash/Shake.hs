@@ -2,7 +2,6 @@
 {-# LANGUAGE TypeFamilies, GeneralizedNewtypeDeriving #-}
 module Clash.Shake
     ( HDL(..)
-    , clashShakeMain, clashShake
     , nestedPhony
     , ClashKit(..)
     , clashRules
@@ -11,6 +10,7 @@ module Clash.Shake
     , xilinxISE
     , xilinxVivado
     , binImage
+    , useConfig
     ) where
 
 import Development.Shake
@@ -102,8 +102,8 @@ withWorkingDirectory dir act =
     bracket Dir.getCurrentDirectory Dir.setCurrentDirectory $ \_ ->
         Dir.setCurrentDirectory dir >> act
 
-clashRules :: FilePath -> HDL -> FilePath -> [FilePath] -> FilePath -> [String] -> Action () -> Rules ClashKit
-clashRules buildDir hdl targetDir srcDirs src clashFlags extraGenerated = do
+clashRules :: FilePath -> FilePath -> HDL -> [FilePath] -> FilePath -> [String] -> Action () -> Rules ClashKit
+clashRules buildDir targetDir hdl srcDirs src clashFlags extraGenerated = do
     let synDir = buildDir </> targetDir
         upBuildDir = foldr (</>) "." $ replicate (length $ splitPath buildDir) ".."
         unBuildDir dir = upBuildDir </> dir
@@ -333,28 +333,19 @@ xilinxVivado fpga kit@ClashKit{..} targetDir srcDir topName = do
             ]
         }
 
-clashShakeMain :: FilePath -> Rules () -> IO ()
-clashShakeMain buildDir rules = shakeArgs shakeOptions{ shakeFiles = buildDir } $ do
+useConfig :: FilePath -> Rules ()
+useConfig file = do
     cfg <- do
-        haveConfig <- liftIO $ Dir.doesFileExist "build.mk"
+        haveConfig <- liftIO $ Dir.doesFileExist file
         if haveConfig then do
-            usingConfigFile "build.mk"
-            liftIO $ readConfigFile "build.mk"
+            usingConfigFile file
+            liftIO $ readConfigFile file
           else do
             usingConfig mempty
             return mempty
 
-    rules
-
     forM_ (HM.lookup "TARGET" cfg) $ \target ->
       want [target </> "bitfile"]
-
-clashShake :: FilePath -> Rules () -> IO ()
-clashShake buildDir rules = clashShakeMain buildDir $ do
-    phony "clean" $ do
-        putNormal $ "Cleaning files in " ++ buildDir
-        removeFilesAfter buildDir [ "//*" ]
-    rules
 
 binImage :: Maybe Int -> FilePath -> FilePath -> Action ()
 binImage size src out = do
