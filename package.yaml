@@ -17,13 +17,8 @@ dependencies:
   - bytestring
   - stache
   - aeson
-  - mtl
   - text
-  - containers
   - unordered-containers
-  - hashable
-  - deepseq
-  - binary
   - split
 
 source-dirs:
@@ -32,6 +27,7 @@ source-dirs:
 library:
   exposed-modules:
     - Clash.Shake
+    - Clash.Shake.Xilinx
 
 extra-source-files:
   - template/xilinx-ise/project.tcl.mustache
