@@ -45,9 +45,8 @@ nexysA750T :: XilinxTarget
 nexysA750T = XilinxTarget "Artrix7" "xc7a50t" "icsg324" "-1L"
 
 xilinxISE :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
-xilinxISE fpga kit@ClashKit{..} targetDir srcDir topName = do
+xilinxISE fpga kit@ClashKit{..} outDir srcDir topName = do
     let projectName = topName
-        outDir = buildDir </> targetDir
         rootDir = joinPath . map (const "..") . splitPath $ outDir
 
     let ise tool args = do
@@ -109,9 +108,8 @@ xilinxISE fpga kit@ClashKit{..} targetDir srcDir topName = do
         }
 
 xilinxVivado :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
-xilinxVivado fpga kit@ClashKit{..} targetDir srcDir topName = do
+xilinxVivado fpga kit@ClashKit{..} outDir srcDir topName = do
     let projectName = topName
-        outDir = buildDir </> targetDir
         projectDir = outDir </> projectName
         xpr = projectDir </> projectName <.> "xpr"
         rootDir = joinPath . map (const "..") . splitPath $ outDir
