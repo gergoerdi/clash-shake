@@ -47,8 +47,6 @@ hdlExt SystemVerilog = "sv"
 
 data ClashKit = ClashKit
     { clash :: [String] -> Action ()
-    , buildDir :: FilePath
-    , unBuildDir :: FilePath -> FilePath
     , manifestSrcs :: Action [FilePath]
     }
 
@@ -57,26 +55,21 @@ withWorkingDirectory dir act =
     bracket Dir.getCurrentDirectory Dir.setCurrentDirectory $ \_ ->
         Dir.setCurrentDirectory dir >> act
 
-clashRules :: FilePath -> FilePath -> HDL -> [FilePath] -> FilePath -> [String] -> Action () -> Rules ClashKit
-clashRules buildDir targetDir hdl srcDirs src clashFlags extraGenerated = do
-    let synDir = buildDir </> targetDir
-        upBuildDir = foldr (</>) "." $ replicate (length $ splitPath buildDir) ".."
-        unBuildDir dir = upBuildDir </> dir
-        inBuildDir = withWorkingDirectory buildDir
-
+clashRules :: FilePath -> HDL -> [FilePath] -> FilePath -> [String] -> Action () -> Rules ClashKit
+clashRules outDir hdl srcDirs src clashFlags extraGenerated = do
     let clash args = liftIO $ do
-            let srcFlags = ["-i" <> unBuildDir srcDir | srcDir <- srcDirs]
-            let args' = ["-outputdir", targetDir] <> clashFlags <> srcFlags <> args
+            let srcFlags = ["-i" <> srcDir | srcDir <- srcDirs]
+            let args' = ["-outputdir", outDir] <> clashFlags <> srcFlags <> args
             putStrLn $ "Clash.defaultMain " <> unwords args'
-            inBuildDir $ Clash.defaultMain args'
+            Clash.defaultMain args'
 
     -- TODO: ideally, Clash should return the manifest, or at least its file location...
-    let (synModule, srcArg)
-          | isModuleName src = (last . splitOn "." $ src, src)
-          | otherwise = ("Main", unBuildDir src)
+    let synModule
+          | isModuleName src = last . splitOn "." $ src
+          | otherwise = "Main"
 
         clashTopName = "topEntity"
-        synOut = synDir </> hdlDir hdl </> synModule </> clashTopName
+        synOut = outDir </> hdlDir hdl </> synModule </> clashTopName
         manifest = do
             let manifestFile = synOut </> clashTopName <.> "manifest"
             need [manifestFile]
@@ -89,18 +82,18 @@ clashRules buildDir targetDir hdl srcDirs src clashFlags extraGenerated = do
             return [ synOut </> c <.> hdlExt hdl | c <- clashSrcs ]
 
     getSrcs <- do
-        synDir </> "ghc-deps.make" %> \out -> do
+        outDir </> "ghc-deps.make" %> \out -> do
             alwaysRerun
             -- By writing to a temp file and using `copyFileChanged`,
             -- we avoid spurious reruns
             -- (https://stackoverflow.com/a/64277431/477476)
-            withTempFileWithin synDir $ \tmp -> do
-                clash ["-M", "-dep-suffix", "", "-dep-makefile", unBuildDir tmp, srcArg]
-                liftIO $ removeFiles synDir [takeBaseName tmp <.> "bak"]
+            withTempFileWithin outDir $ \tmp -> do
+                clash ["-M", "-dep-suffix", "", "-dep-makefile", tmp, src]
+                liftIO $ removeFiles outDir [takeBaseName tmp <.> "bak"]
                 copyFileChanged tmp out
 
         return $ do
-            let depFile = synDir </> "ghc-deps.make"
+            let depFile = outDir </> "ghc-deps.make"
             need [depFile]
             deps <- parseMakefile <$> liftIO (readFile depFile)
             let isHsSource fn
@@ -112,11 +105,10 @@ clashRules buildDir targetDir hdl srcDirs src clashFlags extraGenerated = do
                 hsDeps = [fn | (_, fns) <- deps, fn <- fns, isHsSource fn]
             return hsDeps
 
-    synDir </> hdlDir hdl <//> "*.manifest" %> \out -> do
-        srcs <- getSrcs
-        need [buildDir </> src | src <- srcs]
+    outDir </> hdlDir hdl <//> "*.manifest" %> \out -> do
+        need =<< getSrcs
         extraGenerated
-        clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, srcArg]
+        clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, src]
 
     return ClashKit{..}
 
