@@ -65,7 +65,7 @@ clashRules outDir hdl srcDirs src clashFlags extraGenerated = do
 
     -- TODO: ideally, Clash should return the manifest, or at least its file location...
     let synModule
-          | isModuleName src = last . splitOn "." $ src
+          | isModuleName src = head . splitOn "." $ src
           | otherwise = "Main"
 
         clashTopName = "topEntity"
