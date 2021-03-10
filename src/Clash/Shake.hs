@@ -25,8 +25,9 @@ import Control.Monad (forM_)
 import qualified Data.ByteString as BS
 import qualified System.Directory as Dir
 import Control.Exception (bracket)
+import Data.Maybe (fromJust)
 
-import Clash.Driver.Types
+import Clash.Driver.Manifest
 import Clash.Prelude (pack)
 
 data HDL
@@ -65,15 +66,16 @@ clashRules outDir hdl srcDirs src clashFlags extraGenerated = do
 
     -- TODO: ideally, Clash should return the manifest, or at least its file location...
     let synModule
-          | isModuleName src = head . splitOn "." $ src
+          | isModuleName src = src
           | otherwise = "Main"
 
         clashTopName = "topEntity"
-        synOut = outDir </> hdlDir hdl </> synModule </> clashTopName
+        synOut = outDir </> synModule <.> clashTopName
+        manifestFile = synOut </> "clash-manifest.json"
         manifest = do
-            let manifestFile = synOut </> clashTopName <.> "manifest"
             need [manifestFile]
-            read <$> readFile' manifestFile
+            Just manifest <- liftIO $ readManifest manifestFile
+            return manifest
 
     let manifestSrcs = do
             Manifest{..} <- manifest
@@ -105,7 +107,7 @@ clashRules outDir hdl srcDirs src clashFlags extraGenerated = do
                 hsDeps = [fn | (_, fns) <- deps, fn <- fns, isHsSource fn]
             return hsDeps
 
-    outDir </> hdlDir hdl <//> "*.manifest" %> \out -> do
+    manifestFile %> \_out -> do
         need =<< getSrcs
         extraGenerated
         clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, src]
