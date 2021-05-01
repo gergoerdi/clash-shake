@@ -38,6 +38,7 @@ library:
     - Clash.Shake
     - Clash.Shake.Xilinx
     - Clash.Shake.Intel
+    - Clash.Shake.Symbiflow
 
 extra-source-files:
   - template/xilinx-ise/project.tcl.mustache
