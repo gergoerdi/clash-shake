@@ -79,8 +79,15 @@ clashRules outDir hdl srcDirs src clashFlags extraGenerated = do
 
     let manifestSrcs = do
             Manifest{..} <- manifest
-            let clashSrcs = map T.unpack componentNames <>
-                            [ map toLower clashTopName <> "_types" | hdl == VHDL ]
+            let clashSrcs =
+                  [ map toLower clashTopName <> "_types"
+                  | hdl == VHDL
+                  ] <>
+                  [ toLower (T.unpack c) <> "_types"
+                  | hdl == SystemVerilog
+                  , c <- componentNames
+                  ] <>
+                  map T.unpack componentNames
             return [ synOut </> c <.> hdlExt hdl | c <- clashSrcs ]
 
     getSrcs <- do
