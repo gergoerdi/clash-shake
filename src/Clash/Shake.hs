@@ -17,6 +17,7 @@ import Development.Shake.Util (parseMakefile)
 
 import qualified Clash.Main as Clash
 
+import Data.List (isSuffixOf)
 import Data.List.Split
 import Text.Printf
 
@@ -86,9 +87,10 @@ clashRules outDir hdl srcDirs src clashFlags extraGenerated = do
 
     let manifestSrcs = do
             Manifest{..} <- manifest
-            let clashSrcs = map T.unpack componentNames <>
-                            [ map toLower clashTopName <> "_types" | hdl == VHDL ]
-            return [ synOut </> c <.> hdlExt hdl | c <- clashSrcs ]
+            pure [ synOut </> f
+                 | (f, _) <- fileNames
+                 , ("." <> hdlExt hdl) `isSuffixOf` f
+                 ]
 
     outDir </> "ghc-deps.make" %> \out -> do
         alwaysRerun
