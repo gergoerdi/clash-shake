@@ -32,9 +32,13 @@ symbiflowECP5 SymbiflowTarget {..} kit@ClashKit {..} outDir srcDir topName = do
       hdlSrcs = getFiles "src-hdl" ["*.vhdl", "*.v"]
 
   outDir </> "*.json" %> \out -> do
-    srcs1 <- hdlSrcs
+    srcs1 <- fmap (srcDir </>) <$> hdlSrcs
     srcs2 <- manifestSrcs
-    cmd_ "yosys" ["-p", "synth_ecp5 -json " <> out] srcs1 srcs2
+    need (srcs1 <> srcs2)
+    cmd_ "yosys"
+         ["-p", "synth_ecp5 -json " <> out]
+         srcs1
+         srcs2
 
   outDir </> "*.config" %> \out -> do
     let json = out -<.> "json"
