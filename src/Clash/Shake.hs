@@ -56,6 +56,7 @@ hdlClashFlag SystemVerilog = "--systemverilog"
 
 data ClashKit = ClashKit
     { clash :: [String] -> Action ()
+    , clashFlags :: [String]
     , manifestSrcs :: Action [FilePath]
     }
 
