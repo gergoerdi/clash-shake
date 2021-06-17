@@ -49,6 +49,7 @@ hdlExt SystemVerilog = "sv"
 
 data ClashKit = ClashKit
     { clash :: [String] -> Action ()
+    , clashFlags :: [String]
     , manifestSrcs :: Action [FilePath]
     }
 
