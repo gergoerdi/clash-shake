@@ -1,14 +1,26 @@
-name: clash-shake
-version: 0.0.0
-category: hardware
+name:                clash-shake
+version:             0.1.0
+category:            Hardware, Shake
+synopsis:            Shake rules for building Clash programs
+description: |
+  Shake rules for building Clash programs and synthesizing FPGA
+  configuration. Contains build rules for Xilinx ISE and Xilinx Vivado
+  toolchains. See <https://github.com/gergoerdi/clash-pong/> for an
+  example project.
+github:              gergoerdi/clash-shake
+license:             MIT
+author:              Gergő Érdi
+maintainer:          gergo@erdi.hu
+copyright:           2021 Gergő Érdi
+
 
 dependencies:
-  - base
+  - base >= 4.14 && < 5
   - shake
 
-  - clash-prelude
-  - clash-lib
-  - clash-ghc
+  - clash-prelude ^>= 1.4.2
+  - clash-lib  ^>= 1.4.2
+  - clash-ghc ^>= 1.4.2
   - ghc-typelits-natnormalise
   - ghc-typelits-extra
   - ghc-typelits-knownnat
