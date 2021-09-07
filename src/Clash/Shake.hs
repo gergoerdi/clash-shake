@@ -46,6 +46,11 @@ hdlExt VHDL = "vhdl"
 hdlExt Verilog = "v"
 hdlExt SystemVerilog = "sv"
 
+hdlClashFlag :: HDL -> String
+hdlClashFlag VHDL = "--vhdl"
+hdlClashFlag Verilog = "--verilog"
+hdlClashFlag SystemVerilog = "--systemverilog"
+
 data ClashKit = ClashKit
     { clash :: [String] -> Action ()
     , manifestSrcs :: Action [FilePath]
@@ -83,34 +88,30 @@ clashRules outDir hdl srcDirs src clashFlags extraGenerated = do
                             [ map toLower clashTopName <> "_types" | hdl == VHDL ]
             return [ synOut </> c <.> hdlExt hdl | c <- clashSrcs ]
 
-    getSrcs <- do
-        outDir </> "ghc-deps.make" %> \out -> do
-            alwaysRerun
-            -- By writing to a temp file and using `copyFileChanged`,
-            -- we avoid spurious reruns
-            -- (https://stackoverflow.com/a/64277431/477476)
-            withTempFileWithin outDir $ \tmp -> do
-                clash ["-M", "-dep-suffix", "", "-dep-makefile", tmp, src]
-                liftIO $ removeFiles outDir [takeBaseName tmp <.> "bak"]
-                copyFileChanged tmp out
-
-        return $ do
-            let depFile = outDir </> "ghc-deps.make"
-            need [depFile]
-            deps <- parseMakefile <$> liftIO (readFile depFile)
-            let isHsSource fn
-                  | ext `elem` [".hi"] = False
-                  | ext `elem` [".hs", ".lhs"] = True
-                  | otherwise = error $ "Unrecognized source file: " <> fn
-                  where
-                    ext = takeExtension fn
-                hsDeps = [fn | (_, fns) <- deps, fn <- fns, isHsSource fn]
-            return hsDeps
+    outDir </> "ghc-deps.make" %> \out -> do
+        alwaysRerun
+        -- By writing to a temp file and using `copyFileChanged`,
+        -- we avoid spurious reruns
+        -- (https://stackoverflow.com/a/64277431/477476)
+        withTempFileWithin outDir $ \tmp -> do
+            clash ["-M", "-dep-suffix", "", "-dep-makefile", tmp, src]
+            liftIO $ removeFiles outDir [takeBaseName tmp <.> "bak"]
+            copyFileChanged tmp out
 
     manifestFile %> \_out -> do
-        need =<< getSrcs
+        let depFile = outDir </> "ghc-deps.make"
+        need [depFile]
+        deps <- parseMakefile <$> liftIO (readFile depFile)
+        let isHsSource fn
+              | ext `elem` [".hi"] = False
+              | ext `elem` [".hs", ".lhs"] = True
+              | otherwise = error $ "Unrecognized source file: " <> fn
+              where
+                ext = takeExtension fn
+            hsDeps = [fn | (_, fns) <- deps, fn <- fns, isHsSource fn]
+        need hsDeps
         extraGenerated
-        clash [case hdl of { VHDL -> "--vhdl"; Verilog -> "--verilog"; SystemVerilog -> "--systemverilog" }, src]
+        clash [hdlClashFlag hdl, src]
 
     return ClashKit{..}
 
