@@ -37,6 +37,7 @@ library:
   exposed-modules:
     - Clash.Shake
     - Clash.Shake.Xilinx
+    - Clash.Shake.Intel
 
 extra-source-files:
   - template/xilinx-ise/project.tcl.mustache
