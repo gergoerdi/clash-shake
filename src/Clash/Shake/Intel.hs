@@ -9,10 +9,6 @@ import Development.Shake.Config
 
 import Data.Functor ((<&>))
 
-fromJustError :: String -> Maybe a -> a
-fromJustError err Nothing = error err
-fromJustError _ (Just a) = a
-
 quartusSh :: String -> [String] -> Action ()
 quartusSh script args = cmd_ =<< toolchain "QUARTUS" "quartus_sh" ("-t":script:args)
 
