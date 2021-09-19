@@ -7,6 +7,7 @@ module Clash.Shake
     , SynthKit(..)
     , binImage
     , useConfig
+    , toolchain
     ) where
 
 import Development.Shake
@@ -17,6 +18,7 @@ import Development.Shake.Util (parseMakefile)
 import qualified Clash.Main as Clash
 
 import Data.List.Split
+import Text.Printf
 
 import qualified Data.Text as T
 import qualified Data.HashMap.Strict as HM
@@ -151,3 +153,13 @@ binLines size bs = map (filter (/= '_') . show . pack) bytes
 
 isModuleName :: String -> Bool
 isModuleName = all (isUpper . head) . splitOn "."
+
+toolchain :: String -> FilePath -> [String] -> Action [String]
+toolchain name tool args = do
+    wrap <- getConfig name
+    root <- getConfig $ name <> "_ROOT"
+    let exe = case (wrap, root) of
+            (Just wrap, _) -> [wrap, takeFileName tool]
+            (Nothing, Just root) -> [root </> tool]
+            (Nothing, Nothing) -> error $ printf "%s or %s must be set in build.mk" (name <> "_ROOT") name
+    return $ exe ++ args

@@ -49,14 +49,7 @@ xilinxISE fpga kit@ClashKit{..} outDir srcDir topName = do
     let projectName = topName
         rootDir = joinPath . map (const "..") . splitPath $ outDir
 
-    let ise tool args = do
-            root <- getConfig "ISE_ROOT"
-            wrap <- getConfig "ISE"
-            let exe = case (wrap, root) of
-                    (Just wrap, _) -> [wrap, tool]
-                    (Nothing, Just root) -> [root </> "ISE/bin/lin64" </> tool]
-                    (Nothing, Nothing) -> error "ISE_ROOT or ISE must be set in build.mk"
-            cmd_ (Cwd outDir) exe args
+    let ise tool args = cmd_ (Cwd outDir) =<< toolchain "ISE" ("ISE/bin/lin64" </> tool) args
 
     let getFiles dir pats = getDirectoryFiles srcDir [ dir </> pat | pat <- pats ]
         hdlSrcs = getFiles "src-hdl" ["*.vhdl", "*.v", "*.ucf" ]
@@ -114,14 +107,7 @@ xilinxVivado fpga kit@ClashKit{..} outDir srcDir topName = do
         xpr = projectDir </> projectName <.> "xpr"
         rootDir = joinPath . map (const "..") . splitPath $ outDir
 
-    let vivado tool args = do
-            root <- getConfig "VIVADO_ROOT"
-            wrap <- getConfig "VIVADO"
-            let exe = case (wrap, root) of
-                    (Just wrap, _) -> [wrap, tool]
-                    (Nothing, Just root) -> [root </> "bin" </> tool]
-                    (Nothing, Nothing) -> error "VIVADO_ROOT or VIVADO must be set in build.mk"
-            cmd_ (Cwd outDir) exe args
+    let vivado tool args = cmd_ (Cwd outDir) =<< toolchain "VIVADO" ("bin" </> tool) args
         vivadoBatch tcl = do
             need [outDir </> tcl]
             vivado "vivado"
