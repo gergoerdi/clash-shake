@@ -1,0 +1,14 @@
+set_global_assignment -name TOP_LEVEL_ENTITY {{top}}
+
+{{#srcs}}
+set_global_assignment -name VERILOG_FILE {{fileName}}
+{{/srcs}}
+{{#qips}}
+set_global_assignment -name QIP_FILE {{fileName}}
+{{/qips}}
+
+set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id {{top}}
+set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id {{top}}
+set_global_assignment -name PARTITION_COLOR 16764057 -section_id {{top}}
+
+set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id {{top}}
