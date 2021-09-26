@@ -14,9 +14,7 @@ fromJustError err Nothing = error err
 fromJustError _ (Just a) = a
 
 quartusSh :: String -> [String] -> Action ()
-quartusSh script args = do
-    root <- getConfig "QUARTUS_ROOT" <&> fromJustError "QUARTUS_ROOT must be defined"
-    cmd_ (root </> "quartus_sh") "-t" script args
+quartusSh script args = cmd_ =<< toolchain "QUARTUS" "quartus_sh" ("-t":script:args)
 
 quartus :: String -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
 quartus projectName _ outDir srcDir _ = do
