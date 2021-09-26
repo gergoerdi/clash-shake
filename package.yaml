@@ -1,5 +1,5 @@
 name:                clash-shake
-version:             0.1.0
+version:             0.1.1
 category:            Hardware, Shake
 synopsis:            Shake rules for building Clash programs
 description: |
@@ -21,9 +21,6 @@ dependencies:
   - clash-prelude ^>= 1.4.2
   - clash-lib  ^>= 1.4.2
   - clash-ghc ^>= 1.4.2
-  - ghc-typelits-natnormalise
-  - ghc-typelits-extra
-  - ghc-typelits-knownnat
 
   - directory
   - bytestring
