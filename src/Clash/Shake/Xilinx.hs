@@ -49,7 +49,7 @@ xilinxISE fpga kit@ClashKit{..} outDir srcDir topName = do
     let projectName = topName
         rootDir = joinPath . map (const "..") . splitPath $ outDir
 
-    let ise tool args = cmd_ (Cwd outDir) =<< toolchain "ISE" ("ISE/bin/lin64" </> tool) args
+    let ise tool args = cmd_ (Cwd outDir) =<< toolchain "ISE" tool args
 
     let getFiles dir pats = getDirectoryFiles srcDir [ dir </> pat | pat <- pats ]
         hdlSrcs = getFiles "src-hdl" ["*.vhdl", "*.v", "*.ucf" ]
@@ -107,7 +107,7 @@ xilinxVivado fpga kit@ClashKit{..} outDir srcDir topName = do
         xpr = projectDir </> projectName <.> "xpr"
         rootDir = joinPath . map (const "..") . splitPath $ outDir
 
-    let vivado tool args = cmd_ (Cwd outDir) =<< toolchain "VIVADO" ("bin" </> tool) args
+    let vivado tool args = cmd_ (Cwd outDir) =<< toolchain "VIVADO" tool args
         vivadoBatch tcl = do
             need [outDir </> tcl]
             vivado "vivado"

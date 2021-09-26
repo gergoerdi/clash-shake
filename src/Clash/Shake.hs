@@ -159,7 +159,7 @@ toolchain name tool args = do
     wrap <- getConfig name
     root <- getConfig $ name <> "_ROOT"
     let exe = case (wrap, root) of
-            (Just wrap, _) -> [wrap, takeFileName tool]
+            (Just wrap, _) -> [wrap, tool]
             (Nothing, Just root) -> [root </> tool]
             (Nothing, Nothing) -> error $ printf "%s or %s must be set in build.mk" (name <> "_ROOT") name
     return $ exe ++ args
