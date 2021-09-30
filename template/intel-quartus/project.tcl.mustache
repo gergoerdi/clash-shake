@@ -56,9 +56,6 @@ Open "{{project}}"
 if {$make_assignments} {
     set_global_assignment -name FAMILY "{{targetFamily}}"
     set_global_assignment -name DEVICE "{{targetDevice}}"
-    set_global_assignment -name DEVICE_FILTER_PACKAGE {{targetPackage}}
-    set_global_assignment -name DEVICE_FILTER_PIN_COUNT {{targetPin}}
-    set_global_assignment -name DEVICE_FILTER_SPEED_GRADE {{targetSpeed}}
     set_global_assignment -name PROJECT_OUTPUT_DIRECTORY "./"
     set_global_assignment -name NUM_PARALLEL_PROCESSORS 2
     set_global_assignment -name EDA_SIMULATION_TOOL "ModelSim-Altera (Verilog)"

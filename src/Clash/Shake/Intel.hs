@@ -22,22 +22,15 @@ import qualified Data.Text.IO as T
 data IntelTarget = IntelTarget
     { targetFamily :: String
     , targetDevice :: String
-    , targetPackage :: String
-    , targetPin   :: String
-    , targetSpeed :: String
     }
 
 targetMustache IntelTarget{..} =
     [ "targetFamily"  .= T.pack targetFamily
       , "targetDevice"  .= T.pack targetDevice
-      , "targetPackage" .= T.pack targetPackage
-      , "targetPin"     .= T.pack targetPin
-      , "targetSpeed"   .= T.pack targetSpeed
-      , "part"          .= T.pack (targetDevice <> targetPackage <> targetPin <> targetSpeed)
     ]
 
 de0Nano :: IntelTarget
-de0Nano = IntelTarget "Cyclone IV E" "EP4CE22F17C6" "FBGA" "256" "6"
+de0Nano = IntelTarget "Cyclone IV E" "EP4CE22F17C6"
 
 intelQuartus :: IntelTarget -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
 intelQuartus fpga kit@ClashKit{..} outDir srcDir topName = do
