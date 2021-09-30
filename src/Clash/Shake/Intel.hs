@@ -1,6 +1,10 @@
 {-# LANGUAGE OverloadedStrings, RecordWildCards, TemplateHaskell #-}
 module Clash.Shake.Intel
-    ( IntelTarget(..), de0Nano
+    ( IntelTarget(..)
+
+    , de0Nano
+    , arrowDECA
+
     , intelQuartus
     ) where
 
@@ -31,6 +35,9 @@ targetMustache IntelTarget{..} =
 
 de0Nano :: IntelTarget
 de0Nano = IntelTarget "Cyclone IV E" "EP4CE22F17C6"
+
+arrowDECA :: IntelTarget
+arrowDECA = IntelTarget "MAX 10" "10M50DAF484C6GES"
 
 intelQuartus :: IntelTarget -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
 intelQuartus fpga kit@ClashKit{..} outDir srcDir topName = do
