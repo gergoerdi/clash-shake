@@ -16,9 +16,9 @@ xilinx7 target@Xilinx.Target{..} kit@ClashKit{..} outDir srcDir topName = do
     let rootDir = joinPath . map (const "..") . splitPath $ outDir
 
     let symbiflow' :: String -> [String] -> Action ()
-        symbiflow' tool args = cmd_ (Cwd outDir) =<< toolchain "SYMBIFLOW" tool args
+        symbiflow' tool args = cmd_ (EchoStdout False) (Cwd outDir) =<< toolchain "SYMBIFLOW" tool args
         symbiflow :: String -> [String] -> Action ()
-        symbiflow tool args = cmd_ =<< toolchain "SYMBIFLOW" tool args
+        symbiflow tool args = cmd_ (EchoStdout False) =<< toolchain "SYMBIFLOW" tool args
 
     let getFiles dir pats = map (srcDir </>) <$> getDirectoryFiles srcDir [ dir </> pat | pat <- pats ]
         verilogSrcs = getFiles "src-hdl" ["*.v"]
