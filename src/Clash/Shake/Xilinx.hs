@@ -189,6 +189,3 @@ vivado fpga kit@ClashKit{..} outDir srcDir topName = do
                    vivadoBatch "upload.tcl"
             ]
         }
-
-(|>) :: String -> Action () -> (String, Action ())
-(|>) = (,)

@@ -92,6 +92,3 @@ quartus fpga kit@ClashKit{..} outDir srcDir topName = do
                   quartus "quartus_sh" ["-t", outDir </> projectName <.> "tcl"]
               ]
         }
-
-(|>) :: String -> Action () -> (String, Action ())
-(|>) = (,)

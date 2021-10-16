@@ -2,11 +2,15 @@
 module Clash.Shake
     ( HDL(..)
     , nestedPhony
+    , (|>)
+
+    , useConfig
     , ClashKit(..)
     , clashRules
     , SynthKit(..)
+
     , binImage
-    , useConfig
+
     , toolchain
     ) where
 
@@ -163,3 +167,6 @@ toolchain name tool args = do
             (Nothing, Just root) -> [root </> tool]
             (Nothing, Nothing) -> error $ printf "%s or %s must be set in build.mk" (name <> "_ROOT") name
     return $ exe ++ args
+
+(|>) :: String -> Action () -> (String, Action ())
+(|>) = (,)
