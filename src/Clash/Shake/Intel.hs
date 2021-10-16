@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings, RecordWildCards, TemplateHaskell #-}
 module Clash.Shake.Intel
-    ( IntelTarget(..), de0Nano
-    , intelQuartus
+    ( Target(..), de0Nano
+    , quartus
     ) where
 
 import Clash.Shake
@@ -19,21 +19,21 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.IO as T
 
-data IntelTarget = IntelTarget
+data Target = Target
     { targetFamily :: String
     , targetDevice :: String
     }
 
-targetMustache IntelTarget{..} =
+targetMustache Target{..} =
     [ "targetFamily"  .= T.pack targetFamily
-      , "targetDevice"  .= T.pack targetDevice
+    , "targetDevice"  .= T.pack targetDevice
     ]
 
-de0Nano :: IntelTarget
-de0Nano = IntelTarget "Cyclone IV E" "EP4CE22F17C6"
+de0Nano :: Target
+de0Nano = Target "Cyclone IV E" "EP4CE22F17C6"
 
-intelQuartus :: IntelTarget -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
-intelQuartus fpga kit@ClashKit{..} outDir srcDir topName = do
+quartus :: Target -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
+quartus fpga kit@ClashKit{..} outDir srcDir topName = do
     let projectName = topName
         rootDir = joinPath . map (const "..") . splitPath $ outDir
 

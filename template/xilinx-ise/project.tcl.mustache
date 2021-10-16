@@ -134,7 +134,7 @@ proc set_project_props {} {
    project set family "{{targetFamily}}"
    project set device "{{targetDevice}}"
    project set package "{{targetPackage}}"
-   project set speed "{{targetSpeed}}"
+   project set speed "-{{targetSpeed}}"
    project set top_level_module_type "HDL"
    project set synthesis_tool "XST (VHDL/Verilog)"
    project set simulator "ISim (VHDL/Verilog)"
@@ -176,7 +176,7 @@ proc add_source_files {} {
    if { ! [ file exists "ipcore_dir/{{name}}.vhd" ] } {
        puts "$myScript: Regenerating {{name}}"
        cd ipcore_dir
-       run_cg_regen "{{name}}" {{targetDevice}}{{targetSpeed}}{{targetPackage}} VHDL CURRENT
+       run_cg_regen "{{name}}" "{{part}}" VHDL CURRENT
        cd ..
    }
    {{/ipcores}}

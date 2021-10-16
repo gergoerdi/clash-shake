@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings, RecordWildCards, TemplateHaskell #-}
 module Clash.Shake.Xilinx
-    ( XilinxTarget(..), papilioPro, papilioOne, nexysA750T
-    , xilinxISE
-    , xilinxVivado
+    ( Target(..), papilioPro, papilioOne, nexysA750T
+    , ise
+    , vivado
     ) where
 
 import Clash.Shake
@@ -15,37 +15,42 @@ import Development.Shake.Config
 import Text.Mustache
 import qualified Text.Mustache.Compile.TH as TH
 import Data.Aeson
+import qualified Data.Aeson.Types as Aeson
 
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.IO as T
 
-data XilinxTarget = XilinxTarget
+data Target = Target
     { targetFamily :: String
     , targetDevice :: String
     , targetPackage :: String
-    , targetSpeed :: String
+    , targetSpeed :: Word
     }
 
-targetMustache XilinxTarget{..} =
+targetPart :: Target -> String
+targetPart Target{..} = targetDevice <> targetPackage <> "-" <> show targetSpeed
+
+targetMustache :: Target -> [Aeson.Pair]
+targetMustache target@Target{..} =
     [ "targetFamily"  .= T.pack targetFamily
     , "targetDevice"  .= T.pack targetDevice
     , "targetPackage" .= T.pack targetPackage
-    , "targetSpeed"   .= T.pack targetSpeed
-    , "part"          .= T.pack (targetDevice <> targetPackage <> targetSpeed)
+    , "targetSpeed"   .= targetSpeed
+    , "part"          .= T.pack (targetPart target)
     ]
 
-papilioPro :: XilinxTarget
-papilioPro = XilinxTarget "Spartan6" "xc6slx9" "tqg144" "-2"
+papilioPro :: Target
+papilioPro = Target "Spartan6" "xc6slx9" "tqg144" 2
 
-papilioOne :: XilinxTarget
-papilioOne = XilinxTarget "Spartan3E" "xc3s500e" "vq100" "-5"
+papilioOne :: Target
+papilioOne = Target "Spartan3E" "xc3s500e" "vq100" 5
 
-nexysA750T :: XilinxTarget
-nexysA750T = XilinxTarget "Artrix7" "xc7a50t" "icsg324" "-1L"
+nexysA750T :: Target
+nexysA750T = Target "Artix7" "xc7a50t" "icsg324" 1
 
-xilinxISE :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
-xilinxISE fpga kit@ClashKit{..} outDir srcDir topName = do
+ise :: Target -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
+ise fpga kit@ClashKit{..} outDir srcDir topName = do
     let projectName = topName
         rootDir = joinPath . map (const "..") . splitPath $ outDir
 
@@ -100,8 +105,8 @@ xilinxISE fpga kit@ClashKit{..} outDir srcDir topName = do
             ]
         }
 
-xilinxVivado :: XilinxTarget -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
-xilinxVivado fpga kit@ClashKit{..} outDir srcDir topName = do
+vivado :: Target -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
+vivado fpga kit@ClashKit{..} outDir srcDir topName = do
     let projectName = topName
         projectDir = outDir </> projectName
         xpr = projectDir </> projectName <.> "xpr"
