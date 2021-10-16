@@ -1,8 +1,10 @@
 {-# LANGUAGE OverloadedStrings, RecordWildCards, TemplateHaskell #-}
 module Clash.Shake.Xilinx
-    ( Target(..), papilioPro, papilioOne, nexysA750T
+    ( Target(..), targetPart
     , ise
     , vivado
+
+    , papilioPro, papilioOne, nexysA750T
     ) where
 
 import Clash.Shake
@@ -47,7 +49,7 @@ papilioOne :: Target
 papilioOne = Target "Spartan3E" "xc3s500e" "vq100" 5
 
 nexysA750T :: Target
-nexysA750T = Target "Artix7" "xc7a50t" "icsg324" 1
+nexysA750T = Target "artix7" "xc7a50t" "csg324" 1
 
 ise :: Target -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
 ise fpga kit@ClashKit{..} outDir srcDir topName = do
