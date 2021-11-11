@@ -28,7 +28,7 @@ xilinx7 target@Xilinx.Target{..} kit@ClashKit{..} outDir srcDir topName = do
         srcs <- manifestSrcs
         verilogs <- verilogSrcs
         xdcs <- xdcSrcs
-        need $ verilogs <> xdcs
+        need $ srcs <> verilogs <> xdcs
 
         symbiflow' "symbiflow_synth" $
           [ "-d", targetFamily
