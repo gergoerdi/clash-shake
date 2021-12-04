@@ -12,6 +12,8 @@ module Clash.Shake
     , binImage
 
     , toolchain
+
+    , withTargets
     ) where
 
 import Development.Shake
@@ -170,3 +172,8 @@ toolchain name tool args = do
 
 (|>) :: String -> Action () -> (String, Action ())
 (|>) = (,)
+
+withTargets :: [String] -> Rules a -> Rules a
+withTargets targets rules
+  | null targets = rules
+  | otherwise = want targets >> withoutActions rules
