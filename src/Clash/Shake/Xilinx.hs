@@ -3,6 +3,7 @@ module Clash.Shake.Xilinx
     ( Target(..), targetPart
     , ise
     , vivado
+    , vivadoWithVersion
 
     , papilioPro, papilioOne, nexysA750T
     ) where
@@ -108,7 +109,10 @@ ise fpga kit@ClashKit{..} outDir srcDir topName = do
         }
 
 vivado :: Target -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
-vivado fpga kit@ClashKit{..} outDir srcDir topName = do
+vivado = vivadoWithVersion "2019"
+
+vivadoWithVersion :: String -> Target -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
+vivadoWithVersion version fpga kit@ClashKit{..} outDir srcDir topName = do
     let projectName = topName
         projectDir = outDir </> projectName
         xpr = projectDir </> projectName <.> "xpr"
@@ -156,6 +160,7 @@ vivado fpga kit@ClashKit{..} outDir srcDir topName = do
                        ]
                      , [ "ipcores" .= [ object [ "name" .= takeBaseName core ] | core <- cores ] ]
                      , [ "constraintSrcs" .= [ object [ "fileName" .= (srcDir </> src) ] | src <- constrs ] ]
+                     , [ "version" .= version ]
                      ]
         writeFileChanged out . TL.unpack $ renderMustache template values
 
