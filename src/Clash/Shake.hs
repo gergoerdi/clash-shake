@@ -34,6 +34,7 @@ import qualified Data.ByteString as BS
 import qualified System.Directory as Dir
 import Control.Exception (bracket)
 import Data.Maybe (fromJust)
+import Data.Bits
 
 import Clash.Driver.Manifest
 import Clash.Prelude (pack)
@@ -152,10 +153,16 @@ binImage size src out = do
     writeFileChanged out (unlines lines)
 
 binLines :: Maybe Int -> BS.ByteString -> [String]
-binLines size bs = map (filter (/= '_') . show . pack) bytes
+binLines size bs = map bitsOf bytes
   where
     bytes = maybe id ensureSize size $ BS.unpack bs
     ensureSize size bs = take size $ bs <> repeat 0x00
+
+bitsOf :: (FiniteBits a) => a -> [Char]
+bitsOf x = reverse $ go (finiteBitSize x) x
+  where
+    go 0 _ = []
+    go n x = (if testBit x 0 then '1' else '0') : go (n-1) (x `shiftR` 1)
 
 isModuleName :: String -> Bool
 isModuleName = all (isUpper . head) . splitOn "."
