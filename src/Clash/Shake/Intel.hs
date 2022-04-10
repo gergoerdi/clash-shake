@@ -89,6 +89,15 @@ quartus fpga kit@ClashKit{..} outDir srcDir topName = do
             ]
         quartus "quartus_sh" ["-t", projectName <.> "tcl"]
 
+    outDir </> topName <.> "rbf" %> \out -> do
+        let sof = out -<.> "sof"
+        need [sof]
+        quartus "quartus_cpf"
+          [ "--option=bitstream_compression=off"
+          , "-c", makeRelative outDir sof
+          , makeRelative outDir out
+          ]
+
     return $ SynthKit
         { bitfile = outDir </> topName <.> "sof"
           , phonies =
