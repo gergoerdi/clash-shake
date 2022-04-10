@@ -5,7 +5,7 @@ module Clash.Shake
     , (|>)
 
     , useConfig
-    , ClashKit(..)
+    , RunClash(..), ClashKit(..)
     , clashRules
     , SynthKit(..)
 
@@ -60,17 +60,28 @@ hdlClashFlag VHDL = "--vhdl"
 hdlClashFlag Verilog = "--verilog"
 hdlClashFlag SystemVerilog = "--systemverilog"
 
+type RunClash = [String] -> Action ()
+
 data ClashKit = ClashKit
-    { clash :: [String] -> Action ()
-    , manifestSrcs :: Action [FilePath]
+    { manifestSrcs :: Action [FilePath]
     }
+
+instance Semigroup ClashKit where
+    kit <> kit' = ClashKit
+        { manifestSrcs = (<>) <$> manifestSrcs kit <*> manifestSrcs kit'
+        }
+
+instance Monoid ClashKit where
+    mempty = ClashKit
+        { manifestSrcs = pure mempty
+        }
 
 withWorkingDirectory :: FilePath -> IO a -> IO a
 withWorkingDirectory dir act =
     bracket Dir.getCurrentDirectory Dir.setCurrentDirectory $ \_ ->
         Dir.setCurrentDirectory dir >> act
 
-clashRules :: FilePath -> HDL -> [FilePath] -> FilePath -> [String] -> Action () -> Rules ClashKit
+clashRules :: FilePath -> HDL -> [FilePath] -> FilePath -> [String] -> Action () -> Rules (RunClash, ClashKit)
 clashRules outDir hdl srcDirs src clashFlags extraGenerated = do
     let clash args = liftIO $ do
             let srcFlags = ["-i" <> srcDir | srcDir <- srcDirs]
@@ -122,7 +133,7 @@ clashRules outDir hdl srcDirs src clashFlags extraGenerated = do
         extraGenerated
         clash [hdlClashFlag hdl, src]
 
-    return ClashKit{..}
+    return (clash, ClashKit{..})
 
 data SynthKit = SynthKit
     { bitfile :: FilePath
