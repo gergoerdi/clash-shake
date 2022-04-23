@@ -77,7 +77,9 @@ quartus fpga kit@ClashKit{..} outDir srcDir topName = do
             let src = srcDir </> makeRelative outDir out
             copyFileChanged src out
 
-    outDir </> topName <.> "sof" %> \_out -> do
+    let bitfile = outDir </> topName <.> "sof"
+
+    bitfile %> \_out -> do
         srcs1 <- manifestSrcs
         srcs2 <- hdlSrcs
         cores <- ipCores
@@ -99,10 +101,13 @@ quartus fpga kit@ClashKit{..} outDir srcDir topName = do
           ]
 
     return $ SynthKit
-        { bitfile = outDir </> topName <.> "sof"
+        { bitfile = bitfile
           , phonies =
               [ "quartus" |> do
-                  need [outDir </> projectName <.> "tcl"]
-                  quartus "quartus_sh" ["-t", outDir </> projectName <.> "tcl"]
+                    need [outDir </> projectName <.> "tcl"]
+                    quartus "quartus_sh" ["-t", outDir </> projectName <.> "tcl"]
+              , "upload" |> do
+                    need [bitfile]
+                    quartus "quartus_pgm" ["-m", "jtag", "-o", "pv;" <> bitfile]
               ]
         }
