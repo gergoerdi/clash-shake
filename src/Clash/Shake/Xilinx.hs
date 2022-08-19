@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings, RecordWildCards, TemplateHaskell #-}
 module Clash.Shake.Xilinx
     ( Target(..), targetPart
+    , Board(..)
     , ise
     , vivado
 
@@ -48,8 +49,21 @@ papilioPro = Target "Spartan6" "xc6slx9" "tqg144" 2
 papilioOne :: Target
 papilioOne = Target "Spartan3E" "xc3s500e" "vq100" 5
 
-nexysA750T :: Target
-nexysA750T = Target "artix7" "xc7a50t" "csg324" 1
+data Board = Board
+    { boardSpec :: String -- TODO: what is the structure of this?
+    , boardTarget :: Target
+    }
+
+boardMustache :: Board -> [Aeson.Pair]
+boardMustache Board{..} =
+    [ "board" .= T.pack boardSpec
+    ] <>
+    targetMustache boardTarget
+
+nexysA750T :: Board
+nexysA750T = Board "digilentinc.com:nexys=a7-50t:part0:1.0" $
+    Target "artix7" "xc7a50t" "csg324" 1
+
 
 ise :: Target -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
 ise fpga kit@ClashKit{..} outDir srcDir topName = do
@@ -107,8 +121,8 @@ ise fpga kit@ClashKit{..} outDir srcDir topName = do
             ]
         }
 
-vivado :: Target -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
-vivado fpga kit@ClashKit{..} outDir srcDir topName = do
+vivado :: Board -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
+vivado board kit@ClashKit{..} outDir srcDir topName = do
     let projectName = topName
         projectDir = outDir </> projectName
         xpr = projectDir </> projectName <.> "xpr"
@@ -142,8 +156,7 @@ vivado fpga kit@ClashKit{..} outDir srcDir topName = do
                      [ [ "rootDir" .= T.pack rootDir]
                      , [ "project" .= T.pack projectName ]
                      , [ "top" .= T.pack topName ]
-                     , targetMustache fpga
-                     , [ "board" .= T.pack "digilentinc.com:nexys-a7-50t:part0:1.0" ] -- TODO
+                     , boardMustache board
                      , [ "srcs" .= mconcat
                          [ [ object [ "fileName" .= src ] | src <- srcs1 ]
                          , [ object [ "fileName" .= (srcDir </> src) ] | src <- srcs2 ]
@@ -172,7 +185,7 @@ vivado fpga kit@ClashKit{..} outDir srcDir topName = do
         let values = object . mconcat $
                      [ [ "project" .= T.pack projectName ]
                      , [ "top" .= T.pack topName ]
-                     , targetMustache fpga
+                     , boardMustache board
                      ]
         writeFileChanged out . TL.unpack $ renderMustache template values
 

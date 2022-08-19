@@ -11,8 +11,8 @@ import Development.Shake.Command
 import Development.Shake.FilePath
 import Development.Shake.Config
 
-xilinx7 :: Xilinx.Target -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
-xilinx7 target@Xilinx.Target{..} kit@ClashKit{..} outDir srcDir topName = do
+xilinx7 :: Xilinx.Board -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
+xilinx7 Xilinx.Board{ boardTarget = target@Xilinx.Target{..} } kit@ClashKit{..} outDir srcDir topName = do
     let rootDir = joinPath . map (const "..") . splitPath $ outDir
 
     let symbiflow' :: String -> [String] -> Action ()
