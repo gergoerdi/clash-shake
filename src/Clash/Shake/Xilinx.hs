@@ -5,7 +5,7 @@ module Clash.Shake.Xilinx
     , ise
     , vivado
 
-    , papilioPro, papilioOne, nexysA750T
+    , papilioPro, papilioOne, nexysA750T, basys3
     ) where
 
 import Clash.Shake
@@ -63,6 +63,10 @@ boardMustache Board{..} =
 nexysA750T :: Board
 nexysA750T = Board "digilentinc.com:nexys=a7-50t:part0:1.0" $
     Target "artix7" "xc7a50t" "csg324" 1
+
+basys3 :: Board
+basys3 = Board "digilentinc.com:basys3:part0:1.2" $
+    Target "artix7" "xc7a35t" "cpg236" 1
 
 
 ise :: Target -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
