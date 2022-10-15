@@ -1,5 +1,5 @@
 name:                clash-shake
-version:             0.3.1
+version:             0.3.1.1
 category:            Hardware, Shake
 synopsis:            Shake rules for building Clash programs
 description: |
@@ -11,7 +11,7 @@ github:              gergoerdi/clash-shake
 license:             MIT
 author:              Gergő Érdi
 maintainer:          gergo@erdi.hu
-copyright:           2021 Gergő Érdi
+copyright:           2021-2022 Gergő Érdi
 
 
 dependencies:
