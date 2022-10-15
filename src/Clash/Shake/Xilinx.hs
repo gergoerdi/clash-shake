@@ -61,7 +61,7 @@ boardMustache Board{..} =
     targetMustache boardTarget
 
 nexysA750T :: Board
-nexysA750T = Board "digilentinc.com:nexys:a7-50t:part0:1.0" $
+nexysA750T = Board "digilentinc.com:nexys-a7-50t:part0:1.0" $
     Target "artix7" "xc7a50t" "csg324" 1
 
 basys3 :: Board
