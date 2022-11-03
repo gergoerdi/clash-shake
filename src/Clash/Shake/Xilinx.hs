@@ -5,7 +5,7 @@ module Clash.Shake.Xilinx
     , ise
     , vivado
 
-    , papilioPro, papilioOne, nexysA750T, basys3
+    , papilioPro, papilioOne, nexysA750T, basys3, pynqZ2
     ) where
 
 import Clash.Shake
@@ -29,10 +29,14 @@ data Target = Target
     , targetDevice :: String
     , targetPackage :: String
     , targetSpeed :: Word
+    , targetDeviceIndex :: Word
     }
 
 targetPart :: Target -> String
 targetPart Target{..} = targetDevice <> targetPackage <> "-" <> show targetSpeed
+
+targetDeviceName :: Target -> String
+targetDeviceName Target{..} = targetDevice <> "_" <> show targetDeviceIndex
 
 targetMustache :: Target -> [Aeson.Pair]
 targetMustache target@Target{..} =
@@ -41,13 +45,14 @@ targetMustache target@Target{..} =
     , "targetPackage" .= T.pack targetPackage
     , "targetSpeed"   .= targetSpeed
     , "part"          .= T.pack (targetPart target)
+    , "deviceName"    .= T.pack (targetDeviceName target)
     ]
 
 papilioPro :: Target
-papilioPro = Target "Spartan6" "xc6slx9" "tqg144" 2
+papilioPro = Target "Spartan6" "xc6slx9" "tqg144" 2 0
 
 papilioOne :: Target
-papilioOne = Target "Spartan3E" "xc3s500e" "vq100" 5
+papilioOne = Target "Spartan3E" "xc3s500e" "vq100" 5 0
 
 data Board = Board
     { boardSpec :: String -- TODO: what is the structure of this?
@@ -62,12 +67,15 @@ boardMustache Board{..} =
 
 nexysA750T :: Board
 nexysA750T = Board "digilentinc.com:nexys-a7-50t:part0:1.0" $
-    Target "artix7" "xc7a50t" "csg324" 1
+    Target "artix7" "xc7a50t" "csg324" 1 0
 
 basys3 :: Board
 basys3 = Board "digilentinc.com:basys3:part0:1.2" $
-    Target "artix7" "xc7a35t" "cpg236" 1
+    Target "artix7" "xc7a35t" "cpg236" 1 0
 
+pynqZ2 :: Board
+pynqZ2 = Board "tul.com.tw:pynq-z2:part0:1.0" $
+    Target "zynq7000" "xc7z020" "clg400" 1 1
 
 ise :: Target -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
 ise fpga kit@ClashKit{..} outDir srcDir topName = do

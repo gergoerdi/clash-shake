@@ -2,7 +2,7 @@ open_hw
 connect_hw_server
 open_hw_target
 
-set devs [get_hw_devices {{targetDevice}}_0]
+set devs [get_hw_devices {{deviceName}}]
 set dev [lindex $devs 0]
 
 current_hw_device $devs
