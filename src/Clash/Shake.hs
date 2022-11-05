@@ -141,7 +141,7 @@ data SynthKit = SynthKit
     }
 
 nestedPhony :: String -> String -> Action () -> Rules ()
-nestedPhony root name = phony (root </> name)
+nestedPhony target name = phony (target <> ":" <> name)
 
 useConfig :: FilePath -> Rules ()
 useConfig file = do
@@ -155,7 +155,7 @@ useConfig file = do
             return mempty
 
     forM_ (HM.lookup "TARGET" cfg) $ \target ->
-      want [target </> "bitfile"]
+      want [target <> ":" <> "bitfile"]
 
 binImage :: Maybe Int -> FilePath -> FilePath -> Action ()
 binImage size src out = do
