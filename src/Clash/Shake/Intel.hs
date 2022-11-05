@@ -31,9 +31,11 @@ targetMustache Target{..} =
     , "targetDevice"  .= T.pack targetDevice
     ]
 
+-- | Target definition for Terasic DE0-Nano
 de0Nano :: Target
 de0Nano = Target "Cyclone IV E" "EP4CE22F17C6"
 
+-- | Target definition for Arrow DECA
 arrowDeca :: Target
 arrowDeca = Target "MAX 10" "10M50DAF484C6GES"
 

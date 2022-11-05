@@ -48,9 +48,11 @@ targetMustache target@Target{..} =
     , "deviceName"    .= T.pack (targetDeviceName target)
     ]
 
+-- | Target defintion for Papilio Pro
 papilioPro :: Target
 papilioPro = Target "Spartan6" "xc6slx9" "tqg144" 2 0
 
+-- | Target definition for Papilio One
 papilioOne :: Target
 papilioOne = Target "Spartan3E" "xc3s500e" "vq100" 5 0
 
@@ -65,14 +67,17 @@ boardMustache Board{..} =
     ] <>
     targetMustache boardTarget
 
+-- | Board definition for Digilent Nexys A7-50T
 nexysA750T :: Board
 nexysA750T = Board "digilentinc.com:nexys-a7-50t:part0:1.0" $
     Target "artix7" "xc7a50t" "csg324" 1 0
 
+-- | Board definition for Digilent Basys 3
 basys3 :: Board
 basys3 = Board "digilentinc.com:basys3:part0:1.2" $
     Target "artix7" "xc7a35t" "cpg236" 1 0
 
+-- | Board definition for TUL PYNQ-Z2
 pynqZ2 :: Board
 pynqZ2 = Board "tul.com.tw:pynq-z2:part0:1.0" $
     Target "zynq7000" "xc7z020" "clg400" 1 1
