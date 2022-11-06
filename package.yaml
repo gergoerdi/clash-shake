@@ -38,6 +38,7 @@ library:
     - Clash.Shake
     - Clash.Shake.Xilinx
     - Clash.Shake.Intel
+    - Clash.Shake.F4PGA
     - Clash.Shake.SymbiFlow
 
 extra-source-files:
