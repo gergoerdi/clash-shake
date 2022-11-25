@@ -8,6 +8,8 @@ module Clash.Shake
     , RunClash(..), ClashKit(..)
     , clashRules
     , SynthKit(..)
+    , findFiles
+    , SynthRules
 
     , binImage
 
@@ -139,6 +141,11 @@ data SynthKit = SynthKit
     { bitfile :: FilePath
     , phonies :: [(String, Action ())]
     }
+
+type SynthRules = ClashKit -> FilePath -> String -> Action [FilePath] -> Rules SynthKit
+
+findFiles :: [FilePath] -> [FilePattern] -> [FilePath]
+findFiles universe pats = filter (\fn -> (?== fn) `any` pats) universe
 
 nestedPhony :: String -> String -> Action () -> Rules ()
 nestedPhony target name = phony (target <> ":" <> name)

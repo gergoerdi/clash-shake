@@ -1,5 +1,5 @@
 name:                clash-shake
-version:             0.3.2
+version:             0.4.0
 category:            Hardware, Shake
 synopsis:            Shake rules for building Clash programs
 description: |

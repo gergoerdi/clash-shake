@@ -12,8 +12,8 @@ import Development.Shake.Command
 import Development.Shake.FilePath
 import Development.Shake.Config
 
-xilinx7 :: Xilinx.Board -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
-xilinx7 Xilinx.Board{ boardTarget = target@Xilinx.Target{..} } kit@ClashKit{..} outDir srcDir topName = do
+xilinx7 :: Xilinx.Board -> SynthRules
+xilinx7 Xilinx.Board{ boardTarget = target@Xilinx.Target{..} } kit@ClashKit{..} outDir topName extraGenerated = do
     let rootDir = joinPath . map (const "..") . splitPath $ outDir
 
     let symbiflow' :: String -> [String] -> Action ()
@@ -21,14 +21,11 @@ xilinx7 Xilinx.Board{ boardTarget = target@Xilinx.Target{..} } kit@ClashKit{..} 
         symbiflow :: String -> [String] -> Action ()
         symbiflow tool args = cmd_ (EchoStdout False) =<< toolchain "SYMBIFLOW" tool args
 
-    let getFiles dir pats = map (srcDir </>) <$> getDirectoryFiles srcDir [ dir </> pat | pat <- pats ]
-        verilogSrcs = getFiles "src-hdl" ["*.v"]
-        xdcSrcs = getFiles "src-hdl" ["*.xdc" ]
-
     outDir </> topName <.> "eblif" %> \out -> do
+        extraFiles <- findFiles <$> extraGenerated
         srcs <- manifestSrcs
-        verilogs <- verilogSrcs
-        xdcs <- xdcSrcs
+        let verilogs = extraFiles ["//*.v"]
+            xdcs = extraFiles ["//*.xdc"]
         need $ srcs <> verilogs <> xdcs
 
         symbiflow' "symbiflow_synth" $

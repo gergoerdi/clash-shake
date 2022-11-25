@@ -82,21 +82,18 @@ pynqZ2 :: Board
 pynqZ2 = Board "tul.com.tw:pynq-z2:part0:1.0" 1 $
     Target "zynq7000" "xc7z020" "clg400" 1
 
-ise :: Target -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
-ise fpga kit@ClashKit{..} outDir srcDir topName = do
+ise :: Target -> SynthRules
+ise fpga kit@ClashKit{..} outDir topName extraGenerated = do
     let projectName = topName
         rootDir = joinPath . map (const "..") . splitPath $ outDir
 
     let ise tool args = cmd_ (Cwd outDir) =<< toolchain "ISE" tool args
 
-    let getFiles dir pats = getDirectoryFiles srcDir [ dir </> pat | pat <- pats ]
-        hdlSrcs = getFiles "src-hdl" ["*.vhdl", "*.v", "*.ucf" ]
-        ipCores = getFiles "ipcore_dir" ["*.xco", "*.xaw"]
-
     outDir <//> "*.tcl" %> \out -> do
         srcs1 <- manifestSrcs
-        srcs2 <- hdlSrcs
-        cores <- ipCores
+        extraFiles <- findFiles <$> extraGenerated
+        let srcs2 = extraFiles ["//*.vhdl", "//*.v", "//*.ucf"]
+            cores = extraFiles ["//*.xco", "//*.xaw"]
 
         let template = $(TH.compileMustacheFile "template/xilinx-ise/project.tcl.mustache")
         let values = object . mconcat $
@@ -104,9 +101,8 @@ ise fpga kit@ClashKit{..} outDir srcDir topName = do
                      , [ "top" .= T.pack topName ]
                      , targetMustache fpga
                      , [ "srcs" .= mconcat
-                         [ [ object [ "fileName" .= (rootDir </> src) ] | src <- srcs1 ]
-                         , [ object [ "fileName" .= (rootDir </> srcDir </> src) ] | src <- srcs2 ]
-                         , [ object [ "fileName" .= core ] | core <- cores ]
+                         [ [ object [ "fileName" .= (rootDir </> src) ] | src <- srcs1 <> srcs2 ]
+                         , [ object [ "fileName" .= ("ipcore_dir" </> takeFileName core) ] | core <- cores ]
                          ]
                        ]
                      , [ "ipcores" .= [ object [ "name" .= takeBaseName core ] | core <- cores ] ]
@@ -114,19 +110,20 @@ ise fpga kit@ClashKit{..} outDir srcDir topName = do
         writeFileChanged out . TL.unpack $ renderMustache template values
 
     outDir </> "ipcore_dir" <//> "*" %> \out -> do
-        let src = srcDir </> makeRelative outDir out
-        copyFileChanged src out
+        let src = makeRelative (outDir </> "ipcore_dir") out
+        extraFiles <- findFiles <$> extraGenerated
+        case extraFiles ["//" <> src] of
+          [oneFile] -> copyFileChanged oneFile out
+          [] -> error $ unwords ["Cannot find IP core file", src]
+          multiple ->  error $ unwords ["Multiple candidates for IP core file", src, show multiple]
 
     outDir </> topName <.> "bit" %> \_out -> do
-        srcs1 <- manifestSrcs
-        srcs2 <- hdlSrcs
-        cores <- ipCores
+        extraFiles <- findFiles <$> extraGenerated
+        let cores = extraFiles ["//*.xco", "//*.xaw"]
         need $ mconcat
-            [ [ outDir </> projectName <.> "tcl" ]
-            , [ src | src <- srcs1 ]
-            , [ srcDir </> src | src <- srcs2 ]
-            , [ outDir </> core | core <- cores ]
-            ]
+          [ [ outDir </> projectName <.> "tcl" ]
+          , [ outDir </> "ipcore_dir" </> takeFileName core | core <- cores ]
+          ]
         ise "xtclsh" [projectName <.> "tcl", "rebuild_project"]
 
     return $ SynthKit
@@ -138,8 +135,8 @@ ise fpga kit@ClashKit{..} outDir srcDir topName = do
             ]
         }
 
-vivado :: Board -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
-vivado board kit@ClashKit{..} outDir srcDir topName = do
+vivado :: Board -> SynthRules
+vivado board kit@ClashKit{..} outDir topName extraGenerated = do
     let projectName = topName
         projectDir = outDir </> projectName
         xpr = projectDir </> projectName <.> "xpr"
@@ -155,18 +152,14 @@ vivado board kit@ClashKit{..} outDir srcDir topName = do
               , "-source", tcl
               ]
 
-    let getFiles dir pats = getDirectoryFiles srcDir [ dir </> pat | pat <- pats ]
-        hdlSrcs = getFiles "src-hdl" ["*.vhdl", "*.v" ]
-        constrSrcs = getFiles "src-hdl" ["*.xdc" ]
-        ipCores = getFiles "ip" ["*.xci"]
-
     xpr %> \out -> vivadoBatch "project.tcl"
 
     outDir </> "project.tcl" %> \out -> do
         srcs1 <- manifestSrcs
-        srcs2 <- hdlSrcs
-        cores <- ipCores
-        constrs <- constrSrcs
+        extraFiles <- findFiles <$> extraGenerated
+        let srcs2 = extraFiles ["//*.vhdl", "//*.v" ]
+            cores = extraFiles ["//*.xci"]
+            constrs = extraFiles ["//*.xdc"]
 
         let template = $(TH.compileMustacheFile "template/xilinx-vivado/project.tcl.mustache")
         let values = object . mconcat $
@@ -175,17 +168,16 @@ vivado board kit@ClashKit{..} outDir srcDir topName = do
                      , [ "top" .= T.pack topName ]
                      , boardMustache board
                      , [ "srcs" .= mconcat
-                         [ [ object [ "fileName" .= src ] | src <- srcs1 ]
-                         , [ object [ "fileName" .= (srcDir </> src) ] | src <- srcs2 ]
+                         [ [ object [ "fileName" .= src ] | src <- srcs1 <> srcs2 ]
                          ]
                        ]
                      , [ "coreSrcs" .= object
                          [ "nonempty" .= not (null cores)
-                         , "items" .= [ object [ "fileName" .= (srcDir </> core) ] | core <- cores ]
+                         , "items" .= [ object [ "fileName" .= core ] | core <- cores ]
                          ]
                        ]
                      , [ "ipcores" .= [ object [ "name" .= takeBaseName core ] | core <- cores ] ]
-                     , [ "constraintSrcs" .= [ object [ "fileName" .= (srcDir </> src) ] | src <- constrs ] ]
+                     , [ "constraintSrcs" .= [ object [ "fileName" .= src ] | src <- constrs ] ]
                      ]
         writeFileChanged out . TL.unpack $ renderMustache template values
 
