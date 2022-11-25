@@ -39,58 +39,38 @@ de0Nano = Target "Cyclone IV E" "EP4CE22F17C6"
 arrowDeca :: Target
 arrowDeca = Target "MAX 10" "10M50DAF484C6GES"
 
-quartus :: Target -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
-quartus fpga kit@ClashKit{..} outDir srcDir topName = do
+quartus :: Target -> SynthRules
+quartus fpga kit@ClashKit{..} outDir topName extraGenerated = do
     let projectName = topName
         rootDir = joinPath . map (const "..") . splitPath $ outDir
 
     let quartus tool args = cmd_ (Cwd outDir) =<< toolchain "QUARTUS" tool args
 
-    let getFiles dir pats = getDirectoryFiles srcDir [ dir </> pat | pat <- pats ]
-        hdlSrcs = getFiles "src-hdl" ["*.vhdl", "*.v", "*.sv"]
-        tclSrcs = getFiles "src-hdl" ["*.tcl"]
-        constrSrcs = getFiles "src-hdl" ["*.sdc"]
-        ipCores = getFiles "ip" ["//*.qip"]
-
     outDir <//> "*.tcl" %> \out -> do
         srcs1 <- manifestSrcs
-        srcs2 <- hdlSrcs
-        tcls <- tclSrcs
-        constrs <- constrSrcs
-        cores <- ipCores
+        extraFiles <- findFiles <$> extraGenerated
+        let srcs2 = extraFiles ["//*.vhdl", "//*.v", "//*.sv"]
+            tcls = extraFiles ["//*.tcl"]
+            constrs = extraFiles ["//*.sdc"]
+            cores = extraFiles ["//*.qip"]
 
         let template = $(TH.compileMustacheFile "template/intel-quartus/project.tcl.mustache")
         let values = object . mconcat $
                 [ [ "project" .= T.pack projectName ]
                   , [ "top" .= T.pack topName ]
                   , targetMustache fpga
-                  , [ "srcs" .= mconcat
-                             [ [ object [ "fileName" .= (rootDir </> src) ] | src <- srcs1 ]
-                               , [ object [ "fileName" .= (rootDir </> srcDir </> src) ] | src <- srcs2 ]
-                             ]
+                  , [ "srcs" .= [ object [ "fileName" .= (rootDir </> src) ] | src <- srcs1 <> srcs2 ]
                     ]
-                  , [ "tclSrcs" .= [ object [ "fileName" .= (rootDir </> srcDir </> src) ] | src <- tcls ] ]
-                  , [ "ipcores" .= [ object [ "fileName" .= (rootDir </> srcDir </> core) ] | core <- cores ] ]
-                  , [ "constraintSrcs" .= [ object [ "fileName" .= (rootDir </> srcDir </> src) ] | src <- constrs ] ]
+                  , [ "tclSrcs" .= [ object [ "fileName" .= (rootDir </> src) ] | src <- tcls ] ]
+                  , [ "ipcores" .= [ object [ "fileName" .= (rootDir </> core) ] | core <- cores ] ]
+                  , [ "constraintSrcs" .= [ object [ "fileName" .= (rootDir </> src) ] | src <- constrs ] ]
                 ]
         writeFileChanged out . TL.unpack $ renderMustache template values
-
-    outDir </> "ip" <//> "*" %> \out -> do
-            let src = srcDir </> makeRelative outDir out
-            copyFileChanged src out
 
     let bitfile = outDir </> topName <.> "sof"
 
     bitfile %> \_out -> do
-        srcs1 <- manifestSrcs
-        srcs2 <- hdlSrcs
-        cores <- ipCores
-        need $ mconcat
-            [ [ outDir </> projectName <.> "tcl" ]
-              , [ src | src <- srcs1 ]
-              , [ srcDir </> src | src <- srcs2 ]
-              , [ outDir </> core | core <- cores ]
-            ]
+        need $ [ outDir </> projectName <.> "tcl" ]
         quartus "quartus_sh" ["-t", projectName <.> "tcl"]
 
     outDir </> topName <.> "rbf" %> \out -> do
