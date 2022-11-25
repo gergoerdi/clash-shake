@@ -29,14 +29,10 @@ data Target = Target
     , targetDevice :: String
     , targetPackage :: String
     , targetSpeed :: Word
-    , targetDeviceIndex :: Word
     }
 
 targetPart :: Target -> String
 targetPart Target{..} = targetDevice <> targetPackage <> "-" <> show targetSpeed
-
-targetDeviceName :: Target -> String
-targetDeviceName Target{..} = targetDevice <> "_" <> show targetDeviceIndex
 
 targetMustache :: Target -> [Aeson.Pair]
 targetMustache target@Target{..} =
@@ -45,42 +41,46 @@ targetMustache target@Target{..} =
     , "targetPackage" .= T.pack targetPackage
     , "targetSpeed"   .= targetSpeed
     , "part"          .= T.pack (targetPart target)
-    , "deviceName"    .= T.pack (targetDeviceName target)
     ]
 
 -- | Target defintion for Papilio Pro
 papilioPro :: Target
-papilioPro = Target "Spartan6" "xc6slx9" "tqg144" 2 0
+papilioPro = Target "Spartan6" "xc6slx9" "tqg144" 2
 
 -- | Target definition for Papilio One
 papilioOne :: Target
-papilioOne = Target "Spartan3E" "xc3s500e" "vq100" 5 0
+papilioOne = Target "Spartan3E" "xc3s500e" "vq100" 5
 
 data Board = Board
     { boardSpec :: String -- TODO: what is the structure of this?
+    , boardDeviceIndex :: Word
     , boardTarget :: Target
     }
 
+boardDeviceName :: Board -> String
+boardDeviceName Board{ boardTarget = Target{..}, .. } = targetDevice <> "_" <> show boardDeviceIndex
+
 boardMustache :: Board -> [Aeson.Pair]
-boardMustache Board{..} =
-    [ "board" .= T.pack boardSpec
+boardMustache board@Board{..} =
+    [ "board"      .= T.pack boardSpec
+    , "deviceName" .= T.pack (boardDeviceName board)
     ] <>
     targetMustache boardTarget
 
 -- | Board definition for Digilent Nexys A7-50T
 nexysA750T :: Board
-nexysA750T = Board "digilentinc.com:nexys-a7-50t:part0:1.0" $
-    Target "artix7" "xc7a50t" "csg324" 1 0
+nexysA750T = Board "digilentinc.com:nexys-a7-50t:part0:1.0" 0 $
+    Target "artix7" "xc7a50t" "csg324" 1
 
 -- | Board definition for Digilent Basys 3
 basys3 :: Board
-basys3 = Board "digilentinc.com:basys3:part0:1.2" $
-    Target "artix7" "xc7a35t" "cpg236" 1 0
+basys3 = Board "digilentinc.com:basys3:part0:1.2" 0 $
+    Target "artix7" "xc7a35t" "cpg236" 1
 
 -- | Board definition for TUL PYNQ-Z2
 pynqZ2 :: Board
-pynqZ2 = Board "tul.com.tw:pynq-z2:part0:1.0" $
-    Target "zynq7000" "xc7z020" "clg400" 1 1
+pynqZ2 = Board "tul.com.tw:pynq-z2:part0:1.0" 1 $
+    Target "zynq7000" "xc7z020" "clg400" 1
 
 ise :: Target -> ClashKit -> FilePath -> FilePath -> String -> Rules SynthKit
 ise fpga kit@ClashKit{..} outDir srcDir topName = do
