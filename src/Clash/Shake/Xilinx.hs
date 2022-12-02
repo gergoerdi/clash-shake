@@ -207,7 +207,7 @@ vivado board kit@ClashKit{..} outDir topName extraGenerated = do
         , phonies =
             [ "vivado" |> do
                    need [xpr]
-                   vivado "vivado" [xpr]
+                   vivado "vivado" [makeRelative outDir xpr]
             , "upload" |> do
                    need [projectDir </> projectName <.> "runs" </> "impl_1" </> topName <.> "bit"]
                    vivadoBatch "upload.tcl"
