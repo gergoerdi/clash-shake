@@ -6,7 +6,7 @@ module Clash.Shake
 
     , useConfig
     , RunClash(..), ClashKit(..)
-    , clashRules
+    , clashRules, clashRulesWithTop
     , SynthKit(..)
     , findFiles
     , SynthRules
@@ -84,7 +84,17 @@ withWorkingDirectory dir act =
         Dir.setCurrentDirectory dir >> act
 
 clashRules :: FilePath -> HDL -> [FilePath] -> FilePath -> [String] -> Action () -> Rules (RunClash, ClashKit)
-clashRules outDir hdl srcDirs src clashFlags extraGenerated = do
+clashRules outDir hdl srcDirs src =
+    clashRulesWithTop outDir hdl srcDirs src synModule clashTopName
+    where
+        synModule
+          | isModuleName src = src
+          | otherwise = "Main"
+
+        clashTopName = "topEntity"
+
+clashRulesWithTop :: FilePath -> HDL -> [FilePath] -> FilePath -> String -> String -> [String] -> Action () -> Rules (RunClash, ClashKit)
+clashRulesWithTop outDir hdl srcDirs src synModule clashTopName clashFlags extraGenerated = do
     let clash args = liftIO $ do
             let srcFlags = ["-i" <> srcDir | srcDir <- srcDirs]
             let args' = ["-outputdir", outDir] <> clashFlags <> srcFlags <> args
@@ -92,12 +102,7 @@ clashRules outDir hdl srcDirs src clashFlags extraGenerated = do
             Clash.defaultMain args'
 
     -- TODO: ideally, Clash should return the manifest, or at least its file location...
-    let synModule
-          | isModuleName src = src
-          | otherwise = "Main"
-
-        clashTopName = "topEntity"
-        synOut = outDir </> synModule <.> clashTopName
+    let synOut = outDir </> synModule <.> clashTopName
         manifestFile = synOut </> "clash-manifest.json"
         manifest = do
             need [manifestFile]
