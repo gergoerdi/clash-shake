@@ -17,9 +17,9 @@ xilinx7 Xilinx.Board{ boardTarget = target@Xilinx.Target{..} } kit@ClashKit{..} 
     let rootDir = joinPath . map (const "..") . splitPath $ outDir
 
     let symbiflow' :: String -> [String] -> Action ()
-        symbiflow' tool args = cmd_ (EchoStdout False) (Cwd outDir) =<< toolchain "SYMBIFLOW" tool args
+        symbiflow' tool args = cmd_ (EchoStdout False) (Cwd outDir) =<< toolchain "F4PGA" tool args
         symbiflow :: String -> [String] -> Action ()
-        symbiflow tool args = cmd_ (EchoStdout False) =<< toolchain "SYMBIFLOW" tool args
+        symbiflow tool args = cmd_ (EchoStdout False) =<< toolchain "F4PGA" tool args
 
     outDir </> topName <.> "eblif" %> \out -> do
         extraFiles <- findFiles <$> extraGenerated
