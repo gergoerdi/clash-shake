@@ -9,6 +9,7 @@ module Clash.Shake
     , clashRules
     , SynthKit(..)
     , findFiles
+    , staticFiles
     , SynthRules
 
     , binImage
@@ -202,3 +203,9 @@ withTargets :: [String] -> Rules a -> Rules a
 withTargets targets rules
   | null targets = rules
   | otherwise = want targets >> withoutActions rules
+
+staticFiles :: FilePath -> Action [FilePath]
+staticFiles dir = do
+    files <- map (dir </>) <$> getDirectoryFiles dir ["//*"]
+    need files
+    return files
