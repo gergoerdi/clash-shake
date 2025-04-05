@@ -5,7 +5,7 @@ synopsis:            Shake rules for building Clash programs
 description: |
   Shake rules for building Clash programs and synthesizing FPGA
   configuration. Contains build rules for Xilinx ISE, Xilinx Vivado,
-  Intel Quartus and the open-source SymbiFlow toolchains.  See
+  Intel Quartus, F4PGA for Xilinx, and Yosys for ECP-5 and toolchains.  See
   <https://github.com/gergoerdi/clash-pong/> for an example project.
 github:              gergoerdi/clash-shake
 license:             MIT
@@ -16,19 +16,19 @@ copyright:           2021-2022 Gergő Érdi
 
 dependencies:
   - base >= 4.14 && < 5
-  - shake
+  - shake < 0.20
 
   - clash-prelude >= 1.4.2 && < 2.0
   - clash-lib  >= 1.4.2 && < 2.0
   - clash-ghc >= 1.4.2 && < 2.0
 
-  - directory
-  - bytestring
-  - stache
-  - aeson
-  - text
-  - unordered-containers
-  - split
+  - directory < 2
+  - bytestring < 0.13
+  - stache <= 3
+  - aeson < 3
+  - text < 3
+  - unordered-containers <= 1
+  - split < 0.3
 
 source-dirs:
   - src
