@@ -21,7 +21,9 @@ xilinx7 Xilinx.Board{ boardTarget = target@Xilinx.Target{..} } kit@ClashKit{..} 
         symbiflow :: String -> [String] -> Action ()
         symbiflow tool args = cmd_ (EchoStdout False) =<< toolchain "F4PGA" tool args
 
-    outDir </> topName <.> "eblif" %> \out -> do
+    let produce ext = outDir </> topName <.> ext
+
+    produce "eblif" %> \out -> do
         extraFiles <- findFiles <$> extraGenerated
         srcs <- manifestSrcs
         let verilogs = extraFiles ["//*.v"]
@@ -36,7 +38,7 @@ xilinx7 Xilinx.Board{ boardTarget = target@Xilinx.Target{..} } kit@ClashKit{..} 
           [ "-v " <> rootDir </> src | src <- srcs <> verilogs ] ++
           [ "-x " <> rootDir </> xdc | xdc <- xdcs ]
 
-    outDir <//> "*.net" %> \out -> do
+    produce "net" %> \out -> do
         let eblif = out -<.> "eblif"
         need [eblif]
         symbiflow' "symbiflow_pack" $
@@ -44,7 +46,7 @@ xilinx7 Xilinx.Board{ boardTarget = target@Xilinx.Target{..} } kit@ClashKit{..} 
           , "-e", takeFileName eblif
           ]
 
-    outDir <//> "*.place" %> \out -> do
+    produce "place" %> \out -> do
         let eblif = out -<.> "eblif"
             net = out -<.> "net"
         need [eblif, net]
@@ -55,7 +57,7 @@ xilinx7 Xilinx.Board{ boardTarget = target@Xilinx.Target{..} } kit@ClashKit{..} 
           , "-n", takeFileName net
           ]
 
-    outDir <//> "*.route" %> \out -> do
+    produce "route" %> \out -> do
         let eblif = out -<.> "eblif"
             place = out -<.> "place"
         need [eblif, place]
@@ -64,7 +66,7 @@ xilinx7 Xilinx.Board{ boardTarget = target@Xilinx.Target{..} } kit@ClashKit{..} 
           , "-e", takeFileName eblif
           ]
 
-    outDir <//> "*.fasm" %> \out -> do
+    produce "fasm" %> \out -> do
         let eblif = out -<.> "eblif"
             route = out -<.> "route"
         need [eblif, route]
@@ -73,7 +75,7 @@ xilinx7 Xilinx.Board{ boardTarget = target@Xilinx.Target{..} } kit@ClashKit{..} 
           , "-e", takeFileName eblif
           ]
 
-    outDir <//> "*.bit" %> \out -> do
+    produce "bit" %> \out -> do
         let fasm = out -<.> "fasm"
         need [fasm]
         symbiflow "symbiflow_write_bitstream" $

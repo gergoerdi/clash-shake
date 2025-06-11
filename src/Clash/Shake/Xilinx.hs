@@ -89,7 +89,7 @@ ise fpga kit@ClashKit{..} outDir topName extraGenerated = do
 
     let ise tool args = cmd_ (Cwd outDir) =<< toolchain "ISE" tool args
 
-    outDir <//> "*.tcl" %> \out -> do
+    outDir </> "project.tcl" %> \out -> do
         srcs1 <- manifestSrcs
         extraFiles <- findFiles <$> extraGenerated
         let srcs2 = extraFiles ["//*.vhdl", "//*.v", "//*.ucf"]
@@ -121,17 +121,17 @@ ise fpga kit@ClashKit{..} outDir topName extraGenerated = do
         extraFiles <- findFiles <$> extraGenerated
         let cores = extraFiles ["//*.xco", "//*.xaw"]
         need $ mconcat
-          [ [ outDir </> projectName <.> "tcl" ]
+          [ [ outDir </> "project.tcl" ]
           , [ outDir </> "ipcore_dir" </> takeFileName core | core <- cores ]
           ]
-        ise "xtclsh" [projectName <.> "tcl", "rebuild_project"]
+        ise "xtclsh" ["project.tcl", "rebuild_project"]
 
     return $ SynthKit
         { bitfile = outDir </> topName <.> "bit"
         , phonies =
             [ "ise" |> do
-                   need [outDir </> projectName <.> "tcl"]
-                   ise "ise" [outDir </> projectName <.> "tcl"]
+                   need ["project.tcl"]
+                   ise "ise" ["project.tcl"]
             ]
         }
 

@@ -46,7 +46,7 @@ quartus fpga kit@ClashKit{..} outDir topName extraGenerated = do
 
     let quartus tool args = cmd_ (Cwd outDir) =<< toolchain "QUARTUS" tool args
 
-    outDir <//> "*.tcl" %> \out -> do
+    outDir </> "project.tcl" %> \out -> do
         srcs1 <- manifestSrcs
         extraFiles <- findFiles <$> extraGenerated
         let srcs2 = extraFiles ["//*.vhdl", "//*.v", "//*.sv"]

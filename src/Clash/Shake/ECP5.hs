@@ -30,7 +30,7 @@ ecp5 device kit@ClashKit{..} outDir topName extraGenerated = do
             , printf "synth_ecp5 -json %s" json
             ]
 
-    outDir <//> "*.json" %> \out -> do
+    json %> \out -> do
         extraFiles <- findFiles <$> extraGenerated
         srcs <- manifestSrcs
         let verilogs = extraFiles ["//*.v"]
@@ -40,7 +40,7 @@ ecp5 device kit@ClashKit{..} outDir topName extraGenerated = do
         need [ys]
         yosys "yosys" ["-q", ys]
 
-    outDir <//> "*.config" %> \out -> do
+    outDir </> topName <.> "config" %> \out -> do
         extraFiles <- findFiles <$> extraGenerated
         let [lpf] = extraFiles ["//*.lpf"]
         let json = out -<.> "json"
@@ -48,7 +48,7 @@ ecp5 device kit@ClashKit{..} outDir topName extraGenerated = do
         need [lpf, json]
         yosys "nextpnr-ecp5" ["--json", json, "--textcfg", out, "--" <> device, "--lpf", lpf]
 
-    outDir <//> "*.bit" %> \out -> do
+    outDir </> topName <.> "bit" %> \out -> do
         let config = out -<.> "config"
         need [config]
 
