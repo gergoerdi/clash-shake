@@ -41,6 +41,7 @@ library:
     - Clash.Shake.F4PGA
     - Clash.Shake.SymbiFlow
     - Clash.Shake.ECP5
+    - Clash.Shake.Gowin
 
 extra-source-files:
   - template/xilinx-ise/project.tcl.mustache
