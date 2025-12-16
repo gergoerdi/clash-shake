@@ -5,40 +5,16 @@ module Clash.Shake.ECP5
     ) where
 
 import Clash.Shake
+import Clash.Shake.F4PGA
 
 import Development.Shake
 import Development.Shake.Command
 import Development.Shake.FilePath
 import Development.Shake.Config
-import Text.Printf
 
 ecp5 :: String -> SynthRules
 ecp5 device kit@ClashKit{..} outDir topName extraGenerated = do
-    let yosys :: String -> [String] -> Action ()
-        yosys tool args = cmd_ (EchoStdout False) =<< toolchain "YOSYS" tool args
-
-    let json = outDir </> topName <.> "json"
-
-    outDir </> topName <.> "ys" %> \out -> do
-        extraFiles <- findFiles <$> extraGenerated
-        srcs <- manifestSrcs
-        let verilogs = extraFiles ["//*.v"]
-        need $ srcs <> verilogs
-        writeFileChanged out $ unlines
-            [ printf "read_verilog %s" $ unwords (srcs <> verilogs)
-            , printf "hierarchy -top %s" topName
-            , printf "synth_ecp5 -json %s" json
-            ]
-
-    json %> \out -> do
-        extraFiles <- findFiles <$> extraGenerated
-        srcs <- manifestSrcs
-        let verilogs = extraFiles ["//*.v"]
-        need $ srcs <> verilogs
-
-        let ys = out -<.> "ys"
-        need [ys]
-        yosys "yosys" ["-q", ys]
+    json <- yosysRules kit outDir topName extraGenerated "ecp5"
 
     outDir </> topName <.> "config" %> \out -> do
         extraFiles <- findFiles <$> extraGenerated
