@@ -2,6 +2,8 @@
 module Clash.Shake.F4PGA
     ( xilinx7
     , openFPGALoader
+    , yosysRules
+    , yosys
     ) where
 
 import Clash.Shake
@@ -11,6 +13,7 @@ import Development.Shake
 import Development.Shake.Command
 import Development.Shake.FilePath
 import Development.Shake.Config
+import Text.Printf (printf)
 
 xilinx7 :: Xilinx.Board -> SynthRules
 xilinx7 Xilinx.Board{ boardTarget = target@Xilinx.Target{..} } kit@ClashKit{..} outDir topName extraGenerated = do
@@ -93,6 +96,36 @@ xilinx7 Xilinx.Board{ boardTarget = target@Xilinx.Target{..} } kit@ClashKit{..} 
             [ "upload" |> openFPGALoader ["-c", "digilent"] bitfile
             ]
         }
+
+yosysRules :: ClashKit -> FilePath -> String -> Action [FilePath] -> String -> Rules FilePath
+yosysRules ClashKit{..} outDir topName extraGenerated synth = do
+    outDir </> topName <.> "ys" %> \out -> do
+        extraFiles <- findFiles <$> extraGenerated
+        srcs <- manifestSrcs
+        let verilogs = extraFiles ["//*.v"]
+        need $ srcs <> verilogs
+        writeFileChanged out $
+            unlines
+                [ printf "read_verilog %s" $ unwords (srcs <> verilogs)
+                , printf "hierarchy -top %s" topName
+                , printf "synth_%s -json %s" synth json
+                ]
+
+    json %> \out -> do
+        extraFiles <- findFiles <$> extraGenerated
+        srcs <- manifestSrcs
+        let verilogs = extraFiles ["//*.v"]
+        need $ srcs <> verilogs
+
+        let ys = out -<.> "ys"
+        need [ys]
+        yosys "yosys" ["-q", ys]
+    pure json
+  where
+    json = outDir </> topName <.> "json"
+
+yosys :: String -> [String] -> Action ()
+yosys tool args = cmd_ (EchoStdout False) =<< toolchain "YOSYS" tool args
 
 openFPGALoader :: [String] -> FilePath -> Action ()
 openFPGALoader args bitfile = do

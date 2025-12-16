@@ -12,10 +12,10 @@ module Clash.Shake.Gowin (
 ) where
 
 import Clash.Shake
-import Clash.Shake.F4PGA (openFPGALoader)
+import Clash.Shake.F4PGA
+
 import Development.Shake
 import Development.Shake.FilePath
-import Text.Printf (printf)
 
 data Target = Target
     { targetFamily :: String
@@ -32,32 +32,10 @@ tangNano9k = Board "tangnano9k" $ Target "GW1N-9C" "GW1NR-LV9QN88PC6/I5"
 
 apycula :: Board -> SynthRules
 apycula Board{boardSpec, boardTarget = Target{..}} kit@ClashKit{..} outDir topName extraGenerated = do
-    let yosys :: String -> [String] -> Action ()
-        yosys tool args = cmd_ (EchoStdout False) =<< toolchain "YOSYS" tool args
-    let json = outDir </> topName <.> "json"
     let pnrjson = outDir </> ("pnr" <> topName) <.> "json"
     let bitfile = outDir </> topName <.> "fs"
 
-    outDir </> topName <.> "ys" %> \out -> do
-        extraFiles <- findFiles <$> extraGenerated
-        srcs <- manifestSrcs
-        let verilogs = extraFiles ["//*.v"]
-        need $ srcs <> verilogs
-        writeFileChanged out $
-            unlines
-                [ printf "read_verilog %s" $ unwords (srcs <> verilogs)
-                , printf "synth_gowin -top %s -json %s" topName json
-                ]
-
-    json %> \out -> do
-        extraFiles <- findFiles <$> extraGenerated
-        srcs <- manifestSrcs
-        let verilogs = extraFiles ["//*.v"]
-        need $ srcs <> verilogs
-
-        let ys = out -<.> "ys"
-        need [ys]
-        yosys "yosys" ["-q", ys]
+    json <- yosysRules kit outDir topName extraGenerated "gowin"
 
     pnrjson %> \out -> do
         extraFiles <- findFiles <$> extraGenerated
