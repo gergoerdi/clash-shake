@@ -5,7 +5,7 @@ module Clash.Shake.Xilinx
     , ise
     , vivado
 
-    , papilioPro, papilioOne, nexysA750T, basys3, pynqZ2
+    , papilioPro, papilioOne, nexysA750T, nexysA7100T, basys3, pynqZ2
     ) where
 
 import Clash.Shake
@@ -71,6 +71,11 @@ boardMustache board@Board{..} =
 nexysA750T :: Board
 nexysA750T = Board "digilentinc.com:nexys-a7-50t:part0:1.0" 0 $
     Target "artix7" "xc7a50t" "csg324" 1
+
+-- | Board definition for Digilent Nexys A7-100T
+nexysA7100T :: Board
+nexysA7100T = Board "digilentinc.com:nexys-a7-100t:part0:1.3" 0 $
+  Target "artix7" "xc7a100t" "csg324" 1
 
 -- | Board definition for Digilent Basys 3
 basys3 :: Board
