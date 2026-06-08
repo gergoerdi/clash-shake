@@ -1,10 +1,10 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeFamilies, DeriveAnyClass, DeriveGeneric #-}
 module Clash.Shake
     ( HDL(..)
     , nestedPhony
     , (|>)
 
-    , useConfig
     , RunClash(..), ClashKit(..)
     , clashRules
     , SynthKit(..)
@@ -14,12 +14,15 @@ module Clash.Shake
 
     , binImage
 
+    , useConfig
+    , useConfigWithTools
     , toolchain
 
     , withTargets
     ) where
 
 import Development.Shake
+import Development.Shake.Classes
 import Development.Shake.FilePath
 import Development.Shake.Config
 import Development.Shake.Util (parseMakefile)
@@ -29,6 +32,8 @@ import qualified Clash.Main as Clash
 import Data.List.Split
 import Text.Printf
 
+import qualified ShellWords
+import GHC.Generics
 import qualified Data.Text as T
 import qualified Data.HashMap.Strict as HM
 import Data.Char (isUpper, toLower)
@@ -36,7 +41,7 @@ import Control.Monad (forM_)
 import qualified Data.ByteString as BS
 import qualified System.Directory as Dir
 import Control.Exception (bracket)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromMaybe)
 import Data.Bits
 
 import Clash.Driver.Manifest
@@ -151,8 +156,11 @@ findFiles universe pats = filter (\fn -> (?== fn) `any` pats) universe
 nestedPhony :: String -> String -> Action () -> Rules ()
 nestedPhony target name = phony (target <> ":" <> name)
 
-useConfig :: FilePath -> Rules ()
-useConfig file = do
+data ToolFlags = ToolFlags String String deriving (Generic, Show,Typeable,Eq,Hashable,Binary,NFData)
+type instance RuleResult ToolFlags = Maybe [String]
+
+useConfigWithTools :: HM.HashMap (String, String) [String] -> FilePath -> Rules ()
+useConfigWithTools tools file = do
     cfg <- do
         haveConfig <- liftIO $ Dir.doesFileExist file
         if haveConfig then do
@@ -162,8 +170,25 @@ useConfig file = do
             usingConfig mempty
             return mempty
 
+    let cfg_tools = HM.fromList
+          [((toolchain, tool), args)
+          | (key, val) <- HM.toList cfg
+          , Just (toolchain, tool) <- pure $ toolKey key
+          , let args = either error id $ ShellWords.parse val
+          ]
+        tools' = HM.unionWith (<>) tools cfg_tools
+
+    addOracle $ \(ToolFlags toolchain tool) -> HM.lookup (toolchain, tool) <$> pure tools'
+
     forM_ (HM.lookup "TARGET" cfg) $ \target ->
       want [target <> ":" <> "bitfile"]
+  where
+    toolKey key = do
+        [toolchain, tool, "FLAGS"] <- pure $ splitOn "_" key
+        pure (toolchain, tool)
+
+useConfig :: FilePath -> Rules ()
+useConfig = useConfigWithTools mempty
 
 binImage :: Maybe Int -> FilePath -> FilePath -> Action ()
 binImage size src out = do
@@ -190,11 +215,12 @@ toolchain :: String -> FilePath -> [String] -> Action [String]
 toolchain name tool args = do
     wrap <- getConfig name
     root <- getConfig $ name <> "_ROOT"
+    extra_flags <- fromMaybe [] <$> askOracle (ToolFlags name tool)
     let exe = case (wrap, root) of
             (Just wrap, _) -> [wrap, tool]
             (Nothing, Just root) -> [root </> tool]
             (Nothing, Nothing) -> [tool]
-    return $ exe ++ args
+    return $ exe ++ extra_flags ++ args
 
 (|>) :: String -> Action () -> (String, Action ())
 (|>) = (,)

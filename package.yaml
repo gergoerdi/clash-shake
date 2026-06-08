@@ -1,5 +1,5 @@
 name:                clash-shake
-version:             0.4.0
+version:             0.5.0
 category:            Hardware, Shake
 synopsis:            Shake rules for building Clash programs
 description: |
@@ -29,6 +29,7 @@ dependencies:
   - text < 3
   - unordered-containers <= 1
   - split < 0.3
+  - shellwords
 
 source-dirs:
   - src
